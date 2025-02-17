@@ -2,6 +2,12 @@ from dataclasses import dataclass
 from enum import Enum
 import torch
 
+import logging
+from core.gvar.utils import get_cached_or_download_model_from_hf
+
+logger = logging.getLogger(__name__)
+
+
 """
 When starting the application, all loaded models are stored in memory in this module
 """
@@ -42,18 +48,39 @@ class ModelName(Enum):
         return cls.get_path(model_name).file_name
 
 
+# TODO: a model loaded and cached could be either a file saved by torch.load or a statedict file
+# need to inspect the file to load them correctly
 class TorchModels:
-    models: dict[str, torch.Module]
-
-    def model_is_loaded(self, model_name: str) -> bool:
-        return model_name in self.models.keys()
-
-    # store a model to the global scope
-    def store_model(self, model_name: str, model: torch.Module) -> None:
-        self.models[model_name] = model
+    def __init__(self):
+        self._models = {}
 
     def get_model(self, model_name: str) -> torch.Module:
-        pass
+        # Validate model name
+        if model_name not in ModelName.__members__:
+            raise ValueError(
+                f"Invalid model name: {model_name}. Must be one of {list(ModelName.__members__.keys())}"
+            )
+
+        # Check if model already loaded
+        if model_name in self._models.keys():
+            return self._models[model_name]
+
+        # Get model path info
+        model_path = ModelName.get_path(model_name)
+
+        # Download or get cached model path
+        logger.info(f"Loading model {model_name} from cache or downloading...")
+        model_file = get_cached_or_download_model_from_hf(
+            repo_id=model_path.repo_id, file_name=model_path.file_name
+        )
+
+        # Load the model
+        logger.info(f"Loading model {model_name} from {model_file}")
+        model = torch.load(model_file)
+
+        # Store in memory for future use
+        self._models[model_name] = model
+        return model
 
 
-models = TorchModels()
+torch_models = TorchModels()

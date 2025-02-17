@@ -24,7 +24,7 @@ def grab_best_device(use_gpu: bool) -> torch.device:
     return device
 
 
-def download_model_from_hugging_face(
+def get_cached_or_download_model_from_hf(
     repo_id: str, file_name: str, cache_dir: str = env.CACHE_DIR
 ) -> str:
     """Download a model from Hugging Face Hub if not already cached.
