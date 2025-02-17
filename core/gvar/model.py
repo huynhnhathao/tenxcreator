@@ -14,23 +14,24 @@ When starting the application, all loaded models are stored in memory in this mo
 
 
 @dataclass
-class ModelPath:
+class Model:
     repo_id: str
     file_name: str
+    model_type: type  # concrete type of the model, for example GPTFine, ...
 
 
-class ModelName(Enum):
+class ModelEnum(Enum):
     """Enumeration of all supported model names with their paths"""
 
-    BARK_TEXT_SMALL = ModelPath(repo_id="suno/bark", file_name="text.pt")
-    BARK_COARSE_SMALL = ModelPath(repo_id="suno/bark", file_name="coarse.pt")
-    BARK_FINE_SMALL = ModelPath(repo_id="suno/bark", file_name="fine.pt")
-    BARK_TEXT = ModelPath(repo_id="suno/bark", file_name="text_2.pt")
-    BARK_COARSE = ModelPath(repo_id="suno/bark", file_name="coarse_2.pt")
-    BARK_FINE = ModelPath(repo_id="suno/bark", file_name="fine_2.pt")
+    BARK_TEXT_SMALL = Model(repo_id="suno/bark", file_name="text.pt")
+    BARK_COARSE_SMALL = Model(repo_id="suno/bark", file_name="coarse.pt")
+    BARK_FINE_SMALL = Model(repo_id="suno/bark", file_name="fine.pt")
+    BARK_TEXT = Model(repo_id="suno/bark", file_name="text_2.pt")
+    BARK_COARSE = Model(repo_id="suno/bark", file_name="coarse_2.pt")
+    BARK_FINE = Model(repo_id="suno/bark", file_name="fine_2.pt")
 
     @classmethod
-    def get_path(cls, model_name: str) -> ModelPath:
+    def get_path(cls, model_name: str) -> Model:
         """Get the ModelPath for a given model name"""
         try:
             return cls[model_name].value
@@ -48,17 +49,22 @@ class ModelName(Enum):
         return cls.get_path(model_name).file_name
 
 
-# TODO: a model loaded and cached could be either a file saved by torch.load or a statedict file
+# TODO: a model loaded and cached could be either a file saved by torch.load or a state_dict.pt file
 # need to inspect the file to load them correctly
 class TorchModels:
     def __init__(self):
         self._models = {}
 
     def get_model(self, model_name: str) -> torch.Module:
+        """
+        Get a model from the memory if already loaded, else load it from cache or download it from the hf hub
+        Args
+            - model_name: name of the model, must be one of the option in the ModelEnum enum
+        """
         # Validate model name
-        if model_name not in ModelName.__members__:
+        if ModelEnum[model_name] is None:
             raise ValueError(
-                f"Invalid model name: {model_name}. Must be one of {list(ModelName.__members__.keys())}"
+                f"Invalid model name: {model_name}. Must be one of {list(ModelEnum.__members__.keys())}"
             )
 
         # Check if model already loaded
@@ -66,7 +72,7 @@ class TorchModels:
             return self._models[model_name]
 
         # Get model path info
-        model_path = ModelName.get_path(model_name)
+        model_path = ModelEnum.get_path(model_name)
 
         # Download or get cached model path
         logger.info(f"Loading model {model_name} from cache or downloading...")

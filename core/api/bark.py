@@ -49,6 +49,7 @@ SUPPORTED_LANGS: List[Tuple[str, str]] = [
 ]
 
 
+# reference the bark model from gvar.models.torch_models, then use it to do forward pass
 @validate_call
 def preprocess_audio_prompt(audio: np.ndarray) -> np.ndarray:
     """
@@ -59,7 +60,7 @@ def preprocess_audio_prompt(audio: np.ndarray) -> np.ndarray:
 
 
 @validate_call
-def generate_audio_from_texts(
+def generate_audio(
     texts: list[str], prompt: Optional[np.ndarray], device: torch.device
 ) -> np.ndarray:
     """
