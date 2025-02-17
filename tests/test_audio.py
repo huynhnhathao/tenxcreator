@@ -5,6 +5,8 @@ import tempfile
 import os
 from core.api.audio import read_audio_file
 
+from pydantic import ValidationError
+
 
 @pytest.fixture
 def temp_audio_file():
@@ -93,14 +95,14 @@ def test_invalid_file():
         read_audio_file("nonexistent_file.wav")
 
 
-# def test_invalid_parameters(temp_audio_file):
-#     """Test validation of invalid parameters"""
-#     path = temp_audio_file(channels=1)  # Call the function to create the audio file
-#     with pytest.raises():
-#         read_audio_file(path, channels=3)  # Invalid channel count
+def test_invalid_parameters(temp_audio_file):
+    """Test validation of invalid parameters"""
+    path = temp_audio_file(channels=1)  # Call the function to create the audio file
+    with pytest.raises(ValidationError):
+        read_audio_file(path, channels=3)  # Invalid channel count
 
-#     with pytest.raises():
-#         read_audio_file(path, target_sample_rate=-1)  # Invalid sample rate
+    with pytest.raises(ValidationError):
+        read_audio_file(path, target_sample_rate=-1)  # Invalid sample rate
 
-#     with pytest.raises():
-#         read_audio_file(path, max_duration=-1.0)  # Invalid duration
+    with pytest.raises(ValidationError):
+        read_audio_file(path, max_duration=-1.0)  # Invalid duration

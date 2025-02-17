@@ -9,16 +9,18 @@ from scipy.signal import resample_poly
 from typing_extensions import Annotated, Literal, Optional
 
 from pydantic.types import *
+from pydantic import validate_call
 
 AudioChannel = Literal[1, 2]
 
 
+@validate_call
 def read_audio_file(
     path: Annotated[str, StringConstraints(min_length=1)],
     target_sample_rate: PositiveInt = 44100,
     channels: AudioChannel = 1,
     normalize: bool = True,
-    max_duration: Optional[float] = None,
+    max_duration: Optional[PositiveFloat] = None,
 ) -> np.ndarray:
     """Read and process an audio file from the filesystem.
 
