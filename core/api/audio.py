@@ -6,13 +6,19 @@ import numpy as np
 import soundfile as sf
 from scipy.signal import resample_poly
 
+from typing_extensions import Annotated, Literal, Optional
+
+from pydantic.types import *
+
+AudioChannel = Literal[1, 2]
+
 
 def read_audio_file(
-    path: str,
-    target_sample_rate: int = 44100,
-    channels: int = 1,
+    path: Annotated[str, StringConstraints(min_length=1)],
+    target_sample_rate: PositiveInt = 44100,
+    channels: AudioChannel = 1,
     normalize: bool = True,
-    max_duration: float = None,
+    max_duration: Optional[float] = None,
 ) -> np.ndarray:
     """Read and process an audio file from the filesystem.
 
@@ -37,7 +43,7 @@ def read_audio_file(
         # Resample if needed
         if original_sample_rate != target_sample_rate:
             ratio = target_sample_rate / original_sample_rate
-            data = resample_poly(data, int(ratio * 1000), 1000, axis=0)
+            data = resample_poly(data, int(ratio * 1000000), 1000000, axis=0)
 
         # Convert channels
         if channels == 1 and data.shape[1] > 1:
