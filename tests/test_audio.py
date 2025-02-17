@@ -3,7 +3,7 @@ import numpy as np
 import soundfile as sf
 import tempfile
 import os
-from core.api.audio import read_audio_file
+from core.utils.audio import read_audio_file
 
 from pydantic import ValidationError
 
