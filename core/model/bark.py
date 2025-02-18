@@ -1,6 +1,5 @@
 """
-Much of this code is adapted from Andrej Karpathy's NanoGPT
-(https://github.com/karpathy/nanoGPT)
+codes adapted from https://github.com/suno-ai/bark
 """
 
 import math
