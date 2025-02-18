@@ -5,16 +5,22 @@ from huggingface_hub import hf_hub_download
 from core.gvar import *
 
 
-def grab_best_device(use_gpu: bool) -> torch.device:
+def grab_best_device(use_gpu: bool) -> str:
     if torch.cuda.device_count() > 0 and use_gpu:
-        device = torch.device("cuda")
+        device = "cuda"
     elif (
         torch.backends.mps.is_available() and use_gpu and globals()["GLOBAL_ENABLE_MPS"]
     ):
-        device = torch.device("mps")
+        device = "mps"
     else:
-        device = torch.device("cpu")
+        device = "cpu"
     return device
+
+
+def clear_cuda_cache():
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
 
 
 def get_cached_or_download_model_from_hf(

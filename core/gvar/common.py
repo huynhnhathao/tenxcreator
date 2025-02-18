@@ -4,6 +4,10 @@ from dotenv import load_dotenv
 from enum import Enum, StrEnum
 from typing import ClassVar
 
+import torch
+
+from utils import grab_best_device
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -21,6 +25,7 @@ class EnvVars:
             os.path.expanduser("~"), ".cache/tenxcreator"
         ),  # everything that worth caching will be stored in this directory
         "LOG_LEVEL": "INFO",
+        "USE_GPU": True,
     }
 
     # Load environment variables from .env file
@@ -55,6 +60,7 @@ class EnvVars:
     SUNO_USE_SMALL_MODELS: bool = globals()["SUNO_USE_SMALL_MODELS"]
     CACHE_DIR: str = globals()["CACHE_DIR"]
     LOG_LEVEL: str = globals()["LOG_LEVEL"]
+    DEVICE: str = grab_best_device(globals()["USE_GPU"])
 
 
 # Create instance to load and expose variables

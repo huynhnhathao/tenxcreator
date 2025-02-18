@@ -1,14 +1,18 @@
+import os
 from dataclasses import dataclass
 from enum import Enum
+
 import torch
 
 import logging
-from core.gvar.utils import get_cached_or_download_model_from_hf
-from transformers import EncodecModel
+from core.gvar.utils import get_cached_or_download_model_from_hf, clear_cuda_cache
+from transformers import EncodecModel, BertTokenizer
 
-from typing_extensions import Callable
+from typing_extensions import Callable, Dict, Any, Optional
 
-from model_config import GPTConfig
+from core.model.bark import GPTConfig, FineGPTConfig, GPT, FineGPT
+
+from common import env
 
 logger = logging.getLogger(__name__)
 
@@ -35,20 +39,25 @@ class ModelInfo:
     use_load_state_dict: bool
 
 
+@dataclass
 class Model:
     model: torch.Module
-    config: Callable
-    preprocessor: Callable  # a tokenizer if model is a text processor,
+    config: Optional[Callable]
+    preprocessor: Optional[Callable]  # a tokenizer if model is a text processor,
 
 
 class ModelEnum(Enum):
     """Enumeration of all supported model names with their paths"""
 
     BARK_TEXT_SMALL = ModelInfo(
-        repo_id="suno/bark", file_name="text.pt", model_type="text"
+        repo_id="suno/bark",
+        file_name="text.pt",
+        model_type="text",
     )
     BARK_COARSE_SMALL = ModelInfo(
-        repo_id="suno/bark", file_name="coarse.pt", model_type="coarse"
+        repo_id="suno/bark",
+        file_name="coarse.pt",
+        model_type="coarse",
     )
     BARK_FINE_SMALL = ModelInfo(
         repo_id="suno/bark", file_name="fine.pt", model_type="fine"
@@ -58,6 +67,7 @@ class ModelEnum(Enum):
         repo_id="suno/bark", file_name="coarse_2.pt", model_type="coarse"
     )
     BARK_FINE = ModelInfo(repo_id="suno/bark", file_name="fine_2.pt", model_type="fine")
+
     ENCODEC = ModelInfo(checkpoint_name="facebook/encodec_24khz", model_type="encodec")
 
     @classmethod
@@ -120,7 +130,73 @@ def load_transformers_model(model_info: ModelInfo) -> Model:
 
 
 def load_bark_model(model_info: ModelInfo, model_file_path: str) -> Model:
-    pass
+    if not os.path.exists(model_file_path):
+        raise RuntimeError(
+            f"not found a file at {model_file_path} but it should be there at this point"
+        )
+
+    # we know that bark's models are saved by torch.save()
+    checkpoint = torch.load(
+        model_file_path, map_location=torch.device(env.DEVICE), weights_only=False
+    )
+    if model_info.model_type not in ["text", "coarse", "fine"]:
+        raise ValueError(f"unknown how to load model_type {model_info.model_type}")
+
+    ConfigClass, ModelClass = (
+        (GPTConfig, GPT)
+        if model_info.model_type in ["text", "coarse"]
+        else (FineGPTConfig, FineGPT)
+    )
+
+    model_args = checkpoint["model_args"]
+    if "input_vocab_size" not in model_args:
+        model_args["input_vocab_size"] = model_args["vocab_size"]
+        model_args["output_vocab_size"] = model_args["vocab_size"]
+        del model_args["vocab_size"]
+
+    conf = ConfigClass(**checkpoint["model_args"])
+    model = ModelClass(conf)
+
+    state_dict: Dict[str, Any] = checkpoint["model"]  # type of state_dict?
+    # this fix is specific to this model
+    state_dict = _update_bark_state_dict(model, state_dict)
+    model.load_state_dict(state_dict, strict=False)
+
+    n_params = model.get_num_params()
+    val_loss = checkpoint["best_val_loss"].item()
+    logger.info(
+        f"model loaded: {round(n_params/1e6,1)}M params, {round(val_loss,3)} loss"
+    )
+    model.eval()
+    del checkpoint, state_dict
+    clear_cuda_cache()
+
+    if model_info.model_type == "text":
+        tokenizer = BertTokenizer.from_pretrained("bert-base-multilingual-cased")
+        return Model(model, conf, tokenizer)
+
+    return Model(model)
+
+
+def _update_bark_state_dict(model: GPT, state_dict: Dict[str, Any]) -> Dict[str, Any]:
+    unwanted_prefix = "_orig_mod."
+    # make a copy of the state_dict's keys,
+    # it is dangerous to loop over a list while mutating that list
+    keys = list(state_dict.keys())
+
+    for key in keys:
+        if key.startswith(unwanted_prefix):
+            state_dict[key[len(unwanted_prefix) :]] = state_dict.pop(key)
+
+    extra_keys = set(state_dict.keys()) - set(model.state_dict().keys())
+    extra_keys = set([k for k in extra_keys if not k.endswith(".attn.bias")])
+    missing_keys = set(model.state_dict().keys()) - set(state_dict.keys())
+    missing_keys = set([k for k in missing_keys if not k.endswith(".attn.bias")])
+    if len(extra_keys) != 0:
+        raise ValueError(f"extra keys found: {extra_keys}")
+    if len(missing_keys) != 0:
+        raise ValueError(f"missing keys: {missing_keys}")
+    return state_dict
 
 
 torch_models = TorchModels()
