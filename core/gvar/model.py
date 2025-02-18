@@ -4,89 +4,123 @@ import torch
 
 import logging
 from core.gvar.utils import get_cached_or_download_model_from_hf
+from transformers import EncodecModel
+
+from typing_extensions import Callable
+
+from model_config import GPTConfig
 
 logger = logging.getLogger(__name__)
 
 
 """
-When starting the application, all loaded models are stored in memory in this module
+When starting the application, all loaded models are stored in memory defined in this module
+All models' weights will be downloaded from huggingface hub once and cached to local filesystem
 """
 
 
 @dataclass
+class ModelInfo:
+    repo_id: str  # e.g suno/bark
+    file_name: str  # e.g text.pt
+    checkpoint_name: str  # e.g bert-based-uncased
+    config_class: type
+    model_class: type
+    preprocessor_class: type
+    model_type: str
+    # if this is true, we instantiate a model of class model_class first
+    # then call model.load_state_dict(downloaded_file)
+    # otherwise we use torch.load(downloaded_file), the latter returns a dict with more
+    # data than just the model's state_dict
+    use_load_state_dict: bool
+
+
 class Model:
-    repo_id: str
-    file_name: str
-    model_type: type  # concrete type of the model, for example GPTFine, ...
+    model: torch.Module
+    config: Callable
+    preprocessor: Callable  # a tokenizer if model is a text processor,
 
 
 class ModelEnum(Enum):
     """Enumeration of all supported model names with their paths"""
 
-    BARK_TEXT_SMALL = Model(repo_id="suno/bark", file_name="text.pt")
-    BARK_COARSE_SMALL = Model(repo_id="suno/bark", file_name="coarse.pt")
-    BARK_FINE_SMALL = Model(repo_id="suno/bark", file_name="fine.pt")
-    BARK_TEXT = Model(repo_id="suno/bark", file_name="text_2.pt")
-    BARK_COARSE = Model(repo_id="suno/bark", file_name="coarse_2.pt")
-    BARK_FINE = Model(repo_id="suno/bark", file_name="fine_2.pt")
+    BARK_TEXT_SMALL = ModelInfo(
+        repo_id="suno/bark", file_name="text.pt", model_type="text"
+    )
+    BARK_COARSE_SMALL = ModelInfo(
+        repo_id="suno/bark", file_name="coarse.pt", model_type="coarse"
+    )
+    BARK_FINE_SMALL = ModelInfo(
+        repo_id="suno/bark", file_name="fine.pt", model_type="fine"
+    )
+    BARK_TEXT = ModelInfo(repo_id="suno/bark", file_name="text_2.pt", model_type="text")
+    BARK_COARSE = ModelInfo(
+        repo_id="suno/bark", file_name="coarse_2.pt", model_type="coarse"
+    )
+    BARK_FINE = ModelInfo(repo_id="suno/bark", file_name="fine_2.pt", model_type="fine")
+    ENCODEC = ModelInfo(checkpoint_name="facebook/encodec_24khz", model_type="encodec")
 
     @classmethod
-    def get_path(cls, model_name: str) -> Model:
+    def get_model_info(cls, model_name: str) -> ModelInfo:
         """Get the ModelPath for a given model name"""
         try:
             return cls[model_name].value
         except KeyError:
             raise ValueError(f"Unknown model name: {model_name}")
 
-    @classmethod
-    def get_repo_id(cls, model_name: str) -> str:
-        """Get the repo ID for a given model name"""
-        return cls.get_path(model_name).repo_id
-
-    @classmethod
-    def get_file_name(cls, model_name: str) -> str:
-        """Get the file name for a given model name"""
-        return cls.get_path(model_name).file_name
-
 
 # TODO: a model loaded and cached could be either a file saved by torch.load or a state_dict.pt file
 # need to inspect the file to load them correctly
 class TorchModels:
     def __init__(self):
-        self._models = {}
+        # map from the model_name to the instance of the model
+        self._models: dict[ModelInfo, Model] = {}
 
-    def get_model(self, model_name: str) -> torch.Module:
+    def get_model(self, model_info: ModelInfo) -> Model:
         """
-        Get a model from the memory if already loaded, else load it from cache or download it from the hf hub
+        Get a model and its preprocessor from the memory if already loaded, else load it from cache or download it from the hf hub
         Args
             - model_name: name of the model, must be one of the option in the ModelEnum enum
         """
-        # Validate model name
-        if ModelEnum[model_name] is None:
+        # Check if model already loaded, return it
+        if model_info in self._models.keys():
+            return self._models[model_info]
+
+        if model_info.checkpoint_name == "" and (
+            model_info.repo_id == "" and model_info.file_name == ""
+        ):
             raise ValueError(
-                f"Invalid model name: {model_name}. Must be one of {list(ModelEnum.__members__.keys())}"
+                "either checkpoint_name or repo_id and file_name must be provided"
             )
 
-        # Check if model already loaded
-        if model_name in self._models.keys():
-            return self._models[model_name]
+        # if checkpoint_name is provided, we load model via transformers.from_pretrained(checkpoint_name)
+        # transformers model cache their models separately
+        if model_info.checkpoint_name:
+            return load_transformers_model(model_info)
 
-        # Get model path info
-        model_path = ModelEnum.get_path(model_name)
+        # if the repo_id and the file_name are specified, use them to download the model from hugging face
+        # or load from cached folder if already downloaded
+        if model_info.repo_id and model_info.file_name:
+            model_file_path = get_cached_or_download_model_from_hf(
+                repo_id=model_info.repo_id, file_name=model_info.file_name
+            )
+            return load_model_from_file(model_info, model_file_path)
 
-        # Download or get cached model path
-        logger.info(f"Loading model {model_name} from cache or downloading...")
-        model_file = get_cached_or_download_model_from_hf(
-            repo_id=model_path.repo_id, file_name=model_path.file_name
-        )
 
-        # Load the model
-        logger.info(f"Loading model {model_name} from {model_file}")
-        model = torch.load(model_file)
+# load the model, its configuration and preprocessor
+def load_model_from_file(model_info: ModelInfo, model_file_path: str) -> Model:
+    if model_info.repo_id == "suno/bark":
+        return load_bark_model(model_info, model_file_path)
 
-        # Store in memory for future use
-        self._models[model_name] = model
-        return model
+    raise ValueError(f"unknown how to load model {model_info}")
+
+
+def load_transformers_model(model_info: ModelInfo) -> Model:
+    pass
+
+
+def load_bark_model(model_info: ModelInfo, model_file_path: str) -> Model:
+    pass
 
 
 torch_models = TorchModels()

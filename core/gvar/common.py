@@ -8,12 +8,13 @@ from typing import ClassVar
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 class EnvVars:
     """Class to store and manage environment variables with type hints and documentation"""
-    
+
     # List of environment variables to load with their default values
     _VARS: ClassVar[dict] = {
-        "GLOBAL_ENABLE_MPS": False,  # enable pytorch's metal performance shaders on Apple silicon chips
+        "GLOBAL_ENABLE_MPS": True,  # enable pytorch's metal performance shaders on Apple silicon chips
         "AUDIO_SAMPLE_RATE": 24000,  # default sample rate for all audio files
         "SUNO_USE_SMALL_MODELS": False,  # if use small models when working with BARK
         "CACHE_DIR": os.path.join(
@@ -54,6 +55,7 @@ class EnvVars:
     SUNO_USE_SMALL_MODELS: bool = globals()["SUNO_USE_SMALL_MODELS"]
     CACHE_DIR: str = globals()["CACHE_DIR"]
     LOG_LEVEL: str = globals()["LOG_LEVEL"]
+
 
 # Create instance to load and expose variables
 env = EnvVars()

@@ -5,13 +5,6 @@ from huggingface_hub import hf_hub_download
 from core.gvar import *
 
 
-# load a model to memory and store to the gvar.model module namespace
-# if a model doesn't exist in the cache, download it from huggingface hub
-# do nothing if the model already loaded in the global scope
-def load_model(model_name: str) -> None:
-    pass
-
-
 def grab_best_device(use_gpu: bool) -> torch.device:
     if torch.cuda.device_count() > 0 and use_gpu:
         device = torch.device("cuda")
