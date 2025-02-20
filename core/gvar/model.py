@@ -6,13 +6,17 @@ import torch
 
 import logging
 from core.gvar.utils import get_cached_or_download_model_from_hf, clear_cuda_cache
-from transformers import EncodecModel, BertTokenizer
+from transformers import BertTokenizer
+from encodec import EncodecModel
 
-from typing_extensions import Callable, Dict, Any, Optional
+from typing_extensions import Callable, Dict, Any, Optional, Literal
+
+from pydantic import validate_call
 
 from core.model.bark import GPTConfig, FineGPTConfig, GPT, FineGPT
 
 from common import env
+
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +25,22 @@ logger = logging.getLogger(__name__)
 When starting the application, all loaded models are stored in memory defined in this module
 All models' weights will be downloaded from huggingface hub once and cached to local filesystem
 """
+
+
+class EncodecModelType(Enum):
+    ENCODEC24 = "24khz"
+    ENCODEC48 = "48khz"
+
+
+# Supported bandwidths are 1.5kbps (n_q = 2), 3 kbps (n_q = 4), 6 kbps (n_q = 8) and 12 kbps (n_q =16) and 24kbps (n_q=32).
+# For the 48 kHz model, only 3, 6, 12, and 24 kbps are supported. The number
+# of codebooks for each is half that of the 24 kHz model as the frame rate is twice as much.
+class EncodecTargetBandwidth(float, Enum):
+    BANDWIDTH_1_5 = 1.5
+    BANDWIDTH_3 = 3
+    BANDWIDTH_6 = 6
+    BANDWIDTH_12 = 12
+    BANDWIDTH_24 = 24
 
 
 @dataclass
@@ -68,7 +88,9 @@ class ModelEnum(Enum):
     )
     BARK_FINE = ModelInfo(repo_id="suno/bark", file_name="fine_2.pt", model_type="fine")
 
-    ENCODEC = ModelInfo(checkpoint_name="facebook/encodec_24khz", model_type="encodec")
+    ENCODEC24k = ModelInfo(
+        checkpoint_name="facebook/encodec_24khz", model_type="encodec"
+    )
 
     @classmethod
     def get_model_info(cls, model_name: str) -> ModelInfo:
@@ -197,6 +219,40 @@ def _update_bark_state_dict(model: GPT, state_dict: Dict[str, Any]) -> Dict[str,
     if len(missing_keys) != 0:
         raise ValueError(f"missing keys: {missing_keys}")
     return state_dict
+
+
+# load the Facebook's encodec model
+@validate_call
+def _load_codec_model(
+    model_type: EncodecModelType = EncodecModelType.ENCODEC24,
+    target_bandwidth: EncodecTargetBandwidth = EncodecTargetBandwidth.BANDWIDTH_6,
+) -> None:
+    if model_type == EncodecModelType.ENCODEC24:
+        assert target_bandwidth in [
+            1.5,
+            3,
+            6,
+            12,
+        ], "target_bandwidth of a 24khz model must be one of [1.5, 3, 6, 12], received {target_bandwidth}"
+    else:
+        assert target_bandwidth in [
+            3,
+            6,
+            12,
+            24,
+        ], f"target_bandwidth of a 48khz model must be one of [3, 6, 12, 24], received {target_bandwidth}"
+
+    model = (
+        EncodecModel.encodec_model_24khz()
+        if model_type == EncodecModelType.ENCODEC24
+        else EncodecModel.encodec_model_48khz()
+    )
+
+    model.encode()
+    return Model(
+        model,
+        None,
+    )
 
 
 torch_models = TorchModels()

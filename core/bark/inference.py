@@ -1,5 +1,5 @@
 """
-API to use the bark model
+Generate audio using BARK.
 """
 
 import contextlib
