@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 
 from transformers import BertTokenizer
-from typing_extensions import List, Tuple, Optional, Union
+from typing_extensions import List, Tuple, Optional, Union, Sequence
 
 from pydantic import validate_call
 
@@ -28,7 +28,7 @@ SEMANTIC_INFER_TOKEN = 129_599
 SEMANTIC_RATE_HZ = 49.9
 
 
-@validate_call
+# @validate_call
 def generate_semantic_tokens_from_text(
     text: str,
     semantic_prompt: Union[np.ndarray, None] = None,
@@ -76,13 +76,13 @@ def generate_semantic_tokens_from_text(
     if semantic_prompt is None:
         semantic_prompt = np.array([])
 
-    semantic_history = trim_or_pad_array(semantic_history, SEMANTIC_PAD_TOKEN, 256)
+    semantic_prompt = trim_or_pad_array(semantic_prompt, SEMANTIC_PAD_TOKEN, 256)
 
     # final input is the concatenation of the input encoded text and the semantic tokens array
     # create a new axis to the tensor by indexing [None]
     input_tensor = torch.from_numpy(
         np.hstack(
-            [encoded_text, semantic_history, np.array([SEMANTIC_INFER_TOKEN])]
+            [encoded_text, semantic_prompt, np.array([SEMANTIC_INFER_TOKEN])]
         ).astype(np.int64)
     )[None]
 

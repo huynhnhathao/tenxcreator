@@ -5,7 +5,7 @@ from enum import Enum
 import torch
 
 import logging
-from core.gvar.utils import get_cached_or_download_model_from_hf, clear_cuda_cache
+from core.gvar.common import get_cached_or_download_model_from_hf, clear_cuda_cache
 from transformers import BertTokenizer
 from encodec import EncodecModel
 
@@ -15,7 +15,7 @@ from pydantic import validate_call
 
 from core.bark.model import GPTConfig, FineGPTConfig, GPT, FineGPT
 
-from common import env
+from core.gvar.common import env
 
 
 logger = logging.getLogger(__name__)
@@ -45,23 +45,23 @@ class EncodecTargetBandwidth(float, Enum):
 
 @dataclass
 class ModelInfo:
-    repo_id: str  # e.g suno/bark
-    file_name: str  # e.g text.pt
-    checkpoint_name: str  # e.g bert-based-uncased
-    config_class: type
-    model_class: type
-    preprocessor_class: type
-    model_type: str
+    repo_id: Optional[str] = None  # e.g suno/bark
+    file_name: Optional[str] = None  # e.g text.pt
+    checkpoint_name: Optional[str] = None  # e.g bert-based-uncased
+    config_class: Optional[type] = None
+    model_class: Optional[type] = None
+    preprocessor_class: Optional[type] = None
+    model_type: Optional[str] = None
     # if this is true, we instantiate a model of class model_class first
     # then call model.load_state_dict(downloaded_file)
     # otherwise we use torch.load(downloaded_file), the latter returns a dict with more
     # data than just the model's state_dict
-    use_load_state_dict: bool
+    use_load_state_dict: Optional[bool] = False
 
 
 @dataclass
 class Model:
-    model: torch.Module
+    model: Callable
     config: Optional[Callable]
     preprocessor: Optional[Callable]  # a tokenizer if model is a text processor,
 
