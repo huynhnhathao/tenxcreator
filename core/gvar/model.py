@@ -13,7 +13,7 @@ from typing_extensions import Callable, Dict, Any, Optional, Literal
 
 from pydantic import validate_call
 
-from core.model.bark import GPTConfig, FineGPTConfig, GPT, FineGPT
+from core.bark.model import GPTConfig, FineGPTConfig, GPT, FineGPT
 
 from common import env
 
