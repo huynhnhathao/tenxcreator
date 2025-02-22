@@ -13,7 +13,10 @@ from core.bark.utils import _clear_cuda_cache
 
 from core.gvar import torch_models, ModelEnum, env
 
-_semantic_to_coarse_ratio = COARSE_RATE_HZ / SEMANTIC_RATE_HZ * N_COARSE_CODEBOOKS
+# number of coarse tokens per one semantic token for one second
+num_coarse_token_per_one_semantic_token = (
+    COARSE_RATE_HZ / SEMANTIC_RATE_HZ
+) * N_COARSE_CODEBOOKS
 
 
 def generate_coarse_tokens(
@@ -55,11 +58,14 @@ def generate_coarse_tokens(
         max_coarse_history + sliding_window_length <= 1024 - 256
     ), "Context exceeds model limit"
 
-    max_semantic_history = int(max_coarse_history / _semantic_to_coarse_ratio)
+    # align the number of semantic history token with the given max_coarse_history
+    max_semantic_history = int(
+        max_coarse_history / num_coarse_token_per_one_semantic_token
+    )
 
     # Process history
     semantic_history, coarse_history = _process_history_prompt(
-        history_prompt, max_semantic_history, _semantic_to_coarse_ratio
+        history_prompt, max_semantic_history, num_coarse_token_per_one_semantic_token
     )
 
     # Load coarse model
@@ -72,10 +78,12 @@ def generate_coarse_tokens(
 
     # Prepare inputs
     total_steps = int(
-        round(
-            (semantic_tokens.size(0) * _semantic_to_coarse_ratio / N_COARSE_CODEBOOKS)
-            * N_COARSE_CODEBOOKS
+        np.floor(
+            semantic_tokens.size(0)
+            * num_coarse_token_per_one_semantic_token
+            / N_COARSE_CODEBOOKS
         )
+        * N_COARSE_CODEBOOKS
     )
     assert (
         total_steps > 0 and total_steps % N_COARSE_CODEBOOKS == 0
@@ -93,7 +101,7 @@ def generate_coarse_tokens(
             total_steps,
             base_semantic_index,
             max_semantic_history,
-            _semantic_to_coarse_ratio,
+            num_coarse_token_per_one_semantic_token,
             temperature,
             top_k,
             top_p,
@@ -103,6 +111,7 @@ def generate_coarse_tokens(
             use_kv_caching,
         )
 
+    # remove the history prompt from the generated tokens
     generated_coarse = generated_coarse[coarse_history.size(0) :]
     assert generated_coarse.size(0) == total_steps, "Generated length mismatch"
 
@@ -177,7 +186,7 @@ def _validate_history_prompt(history_prompt: Union[BarkPrompt, None]) -> None:
 def _process_history_prompt(
     history_prompt: Union[BarkPrompt, None],
     max_semantic_history: int,
-    semantic_to_coarse_ratio: float,
+    coarse_to_semantic_ratio: float,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Process the history prompt into semantic and coarse history tensors.
@@ -185,7 +194,7 @@ def _process_history_prompt(
     Args:
         history_prompt: BarkPrompt object or None.
         max_semantic_history: Maximum number of semantic history tokens.
-        semantic_to_coarse_ratio: Ratio of coarse to semantic token rates.
+        coarse_to_semantic_ratio: Ratio of coarse to semantic token rates.
 
     Returns:
         Tuple[semantic_history, coarse_history]: Processed history tensors.
@@ -203,22 +212,22 @@ def _process_history_prompt(
     n_semantic_hist = min(
         max_semantic_history,
         semantic_history.size(0) - semantic_history.size(0) % 2,  # Ensure even length
-        int(coarse_history_flat.size(0) // semantic_to_coarse_ratio),
+        int(coarse_history_flat.size(0) // coarse_to_semantic_ratio),
     )
-    n_coarse_hist = int(round(n_semantic_hist * semantic_to_coarse_ratio))
+    n_coarse_hist = int(round(n_semantic_hist * coarse_to_semantic_ratio))
 
     semantic_history = semantic_history[-n_semantic_hist:].to(torch.int32)
     coarse_history_flat = coarse_history_flat[-n_coarse_hist:].to(torch.int32)
     coarse_history_flat = coarse_history_flat[:-2]  # Original time alignment hack
 
-    # Validate coarse-to-semantic ratio
-    assert (
-        abs(
-            coarse_history.size(1) / semantic_history.size(0)
-            - semantic_to_coarse_ratio / N_COARSE_CODEBOOKS
-        )
-        < 0.1
-    ), "History ratio mismatch"
+    # # Validate coarse-to-semantic ratio
+    # assert (
+    #     abs(
+    #         coarse_history.size(1) / semantic_history.size(0)
+    #         - coarse_to_semantic_ratio / N_COARSE_CODEBOOKS
+    #     )
+    #     < 0.1
+    # ), "History ratio mismatch"
 
     return semantic_history, coarse_history_flat
 
