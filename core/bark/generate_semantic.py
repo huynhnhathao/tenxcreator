@@ -9,22 +9,11 @@ import torch.nn.functional as F
 from transformers import BertTokenizer
 from typing_extensions import List, Tuple, Optional, Union, Sequence
 
-# from pydantic import validate_call
-
-
 from core.gvar import torch_models, ModelEnum, env
 from core.bark.custom_context import inference_mode
 from core.bark.utils import _clear_cuda_cache
 from core.model import GPT
-
-SEMANTIC_VOCAB_SIZE = 10_000
-
-# for the BERT model to get semantic tokens from raw texts
-TEXT_ENCODING_OFFSET = 10_048
-SEMANTIC_PAD_TOKEN = 10_000
-TEXT_PAD_TOKEN = 129_595
-SEMANTIC_INFER_TOKEN = 129_599
-SEMANTIC_RATE_HZ = 49.9
+from core.bark.constants import *
 
 
 def generate_semantic_tokens_from_text(
