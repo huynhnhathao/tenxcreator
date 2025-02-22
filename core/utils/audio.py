@@ -17,7 +17,7 @@ AudioChannel = Literal[1, 2]
 @validate_call
 def read_audio_file(
     path: Annotated[str, StringConstraints(min_length=1)],
-    target_sample_rate: PositiveInt = 44100,
+    target_sample_rate: PositiveInt = 24000,
     channels: AudioChannel = 1,
     normalize: bool = True,
     max_duration: Optional[PositiveFloat] = None,
