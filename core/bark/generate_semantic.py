@@ -28,7 +28,6 @@ SEMANTIC_INFER_TOKEN = 129_599
 SEMANTIC_RATE_HZ = 49.9
 
 
-# @validate_call
 def generate_semantic_tokens_from_text(
     text: str,
     semantic_prompt: Union[np.ndarray, None] = None,
@@ -42,8 +41,38 @@ def generate_semantic_tokens_from_text(
     use_kv_caching: bool = False,
 ) -> torch.Tensor:
     """
-    Generate semantic tokens from given text and semantic prompt.
-    The semantic prompt if provided will be concatenated to the generated semantic tokens of the given text.
+    Generate semantic tokens from given text and optional semantic prompt.
+
+    This function processes input text and generates corresponding semantic tokens using a GPT-style model.
+    The semantic tokens can be used for further audio generation. An optional semantic prompt can be provided
+    to influence the generation process.
+
+    Args:
+        text (str): Input text to generate semantic tokens for. Must be non-empty.
+        semantic_prompt (Union[np.ndarray, None]): Optional array of semantic tokens to use as prompt.
+            If provided, these tokens will be concatenated with the generated tokens.
+        temperature (float): Sampling temperature for token generation. Higher values produce more random outputs.
+            Defaults to 0.7.
+        top_k (Union[int, None]): If set, limits sampling to top-k tokens. Defaults to None.
+        top_p (Union[int, None]): If set, uses nucleus sampling with this probability threshold. Defaults to None.
+        silent (Union[bool, None]): If True, suppresses progress output. Defaults to False.
+        min_eos_p (float): Stop generating new token if the probability of the EOS token is greater than or equal to this p. Defaults to 0.2.
+        max_gen_duration_second (Union[float, None]): Maximum duration in seconds for the audio to be generated, set as an early stopping condition. Defaults to None.
+        allow_early_stop (bool): Whether to allow early stopping based on EOS probability. Defaults to True.
+        use_kv_caching (bool): Whether to use key-value caching for faster generation. Defaults to False.
+
+    Returns:
+        torch.Tensor: Generated semantic tokens as a 1D tensor.
+
+    Raises:
+        AssertionError: If input text is empty or model/tokenizer is not properly loaded.
+        ValueError: If generated tokens are outside valid range.
+
+    Notes:
+        - The function handles both text preprocessing and token generation.
+        - Input text is trimmed and normalized before processing.
+        - Both text and semantic prompts are padded/trimmed to 256 tokens.
+        - CUDA cache is cleared after generation to manage GPU memory.
     """
 
     # trim white spaces and replace redundant white space characters

@@ -1,258 +1,363 @@
+"""
+Global Model Management Module
+
+This module provides a centralized system for managing PyTorch models, particularly large ones like those used for 
+audio and image generation. The primary goal is to lazily load models into memory when requested, cache them for 
+reuse, and manage memory constraints by automatically unloading models when necessary. It prioritizes GPU memory 
+when available, with an option to offload to CPU RAM via configuration.
+
+Key Features:
+- Lazy loading of models to minimize startup overhead.
+- LRU (Least Recently Used) cache to manage memory by unloading unused models.
+- GPU-first memory management with configurable CPU offloading.
+- Thread-safe access for concurrent usage.
+- Support for both Hugging Face pretrained models and custom model files.
+"""
+
 import os
+import psutil
 from dataclasses import dataclass
 from enum import Enum
-
-import torch
-
 import logging
-from core.gvar.common import get_cached_or_download_model_from_hf, clear_cuda_cache
+from typing import Dict, Optional, Callable, Any, Literal
+from threading import Lock
+import torch
 from transformers import BertTokenizer
 from encodec import EncodecModel
-
-from typing_extensions import Callable, Dict, Any, Optional, Literal
-
-from pydantic import validate_call
-
+from core.gvar.common import get_cached_or_download_model_from_hf, clear_cuda_cache
 from core.bark.model import GPTConfig, FineGPTConfig, GPT, FineGPT
+from collections import OrderedDict
 
-from core.gvar.common import env
-
-
+# Configure logging for this module
 logger = logging.getLogger(__name__)
 
-
-"""
-When starting the application, all loaded models are stored in memory defined in this module
-All models' weights will be downloaded from huggingface hub once and cached to local filesystem
-"""
+# Memory threshold (in percentage) to trigger unloading of models when memory usage gets too high
+MEMORY_THRESHOLD = (
+    0.9  # 90% of available memory; applies to GPU unless offloaded to CPU
+)
 
 
 class EncodecModelType(Enum):
-    ENCODEC24 = "24khz"
-    ENCODEC48 = "48khz"
+    """Enumeration for Encodec model types based on sampling rate."""
+
+    ENCODEC24 = "24khz"  # 24 kHz model
+    ENCODEC48 = "48khz"  # 48 kHz model
 
 
-# Supported bandwidths are 1.5kbps (n_q = 2), 3 kbps (n_q = 4), 6 kbps (n_q = 8) and 12 kbps (n_q =16) and 24kbps (n_q=32).
-# For the 48 kHz model, only 3, 6, 12, and 24 kbps are supported. The number
-# of codebooks for each is half that of the 24 kHz model as the frame rate is twice as much.
 class EncodecTargetBandwidth(float, Enum):
-    BANDWIDTH_1_5 = 1.5
-    BANDWIDTH_3 = 3
-    BANDWIDTH_6 = 6
-    BANDWIDTH_12 = 12
-    BANDWIDTH_24 = 24
+    """Enumeration for supported Encodec bandwidths in kbps."""
+
+    BANDWIDTH_1_5 = 1.5  # 1.5 kbps (n_q = 2)
+    BANDWIDTH_3 = 3  # 3 kbps (n_q = 4)
+    BANDWIDTH_6 = 6  # 6 kbps (n_q = 8)
+    BANDWIDTH_12 = 12  # 12 kbps (n_q = 16)
+    BANDWIDTH_24 = 24  # 24 kbps (n_q = 32)
 
 
 @dataclass
 class ModelInfo:
-    repo_id: Optional[str] = None  # e.g suno/bark
-    file_name: Optional[str] = None  # e.g text.pt
-    checkpoint_name: Optional[str] = None  # e.g bert-based-uncased
-    config_class: Optional[type] = None
-    model_class: Optional[type] = None
-    preprocessor_class: Optional[type] = None
-    model_type: Optional[str] = None
-    # if this is true, we instantiate a model of class model_class first
-    # then call model.load_state_dict(downloaded_file)
-    # otherwise we use torch.load(downloaded_file), the latter returns a dict with more
-    # data than just the model's state_dict
-    use_load_state_dict: Optional[bool] = False
+    """Data structure to hold metadata about a model."""
+
+    repo_id: Optional[str] = None  # Hugging Face repository ID (e.g., "suno/bark")
+    file_name: Optional[str] = None  # Filename of the model weights (e.g., "text.pt")
+    checkpoint_name: Optional[str] = (
+        None  # Pretrained checkpoint name (e.g., "facebook/encodec_24khz")
+    )
+    config_class: Optional[type] = None  # Configuration class for the model
+    model_class: Optional[type] = None  # Model class to instantiate
+    preprocessor_class: Optional[type] = None  # Preprocessor class (e.g., tokenizer)
+    model_type: Optional[str] = (
+        None  # Type of model (e.g., "text", "coarse", "encodec")
+    )
+    use_load_state_dict: Optional[bool] = (
+        False  # Whether to use load_state_dict vs torch.load
+    )
 
 
 @dataclass
 class Model:
-    model: Callable
-    config: Optional[Callable]
-    preprocessor: Optional[Callable]  # a tokenizer if model is a text processor,
+    """Container for a loaded model, its configuration, and preprocessor."""
+
+    model: Callable  # The PyTorch model instance
+    config: Optional[Callable] = None  # Model configuration object
+    preprocessor: Optional[Callable] = (
+        None  # Preprocessor (e.g., tokenizer for text models)
+    )
 
 
 class ModelEnum(Enum):
-    """Enumeration of all supported model names with their paths"""
+    """
+    Enumeration of supported models with their metadata.
+    Each entry maps to a ModelInfo object defining how to load the model.
+    """
 
     BARK_TEXT_SMALL = ModelInfo(
-        repo_id="suno/bark",
-        file_name="text.pt",
-        model_type="text",
+        repo_id="suno/bark", file_name="text.pt", model_type="text"
     )
     BARK_COARSE_SMALL = ModelInfo(
-        repo_id="suno/bark",
-        file_name="coarse.pt",
-        model_type="coarse",
+        repo_id="suno/bark", file_name="coarse.pt", model_type="coarse"
     )
     BARK_FINE_SMALL = ModelInfo(
         repo_id="suno/bark", file_name="fine.pt", model_type="fine"
     )
+    ENCODEC24k = ModelInfo(
+        checkpoint_name="facebook/encodec_24khz", model_type="encodec"
+    )
+
     BARK_TEXT = ModelInfo(repo_id="suno/bark", file_name="text_2.pt", model_type="text")
     BARK_COARSE = ModelInfo(
         repo_id="suno/bark", file_name="coarse_2.pt", model_type="coarse"
     )
     BARK_FINE = ModelInfo(repo_id="suno/bark", file_name="fine_2.pt", model_type="fine")
 
-    ENCODEC24k = ModelInfo(
-        checkpoint_name="facebook/encodec_24khz", model_type="encodec"
-    )
-
     @classmethod
     def get_model_info(cls, model_name: str) -> ModelInfo:
-        """Get the ModelPath for a given model name"""
+        """
+        Retrieve ModelInfo for a given model name.
+
+        Args:
+            model_name (str): Name of the model (e.g., "BARK_TEXT_SMALL")
+
+        Returns:
+            ModelInfo: Metadata for the requested model
+
+        Raises:
+            ValueError: If the model name is not recognized
+        """
         try:
             return cls[model_name].value
         except KeyError:
             raise ValueError(f"Unknown model name: {model_name}")
 
 
-# TODO: a model loaded and cached could be either a file saved by torch.load or a state_dict.pt file
-# need to inspect the file to load them correctly
 class TorchModels:
-    def __init__(self):
-        # map from the model_name to the instance of the model
-        self._models: dict[ModelInfo, Model] = {}
+    """
+    Manager class for loading, caching, and unloading PyTorch models with memory management.
+
+    Prioritizes GPU memory when available, with an optional `offload_to_cpu` flag to use CPU RAM instead.
+    Uses an LRU (Least Recently Used) cache to keep only the most recently used models in memory.
+    Automatically unloads models when memory usage (GPU or CPU, depending on config) exceeds a threshold
+    or the maximum number of cached models is reached.
+    """
+
+    def __init__(self, max_models: int = 10, offload_to_cpu: bool = False):
+        """
+        Initialize the model manager.
+
+        Args:
+            max_models (int): Maximum number of models to keep in memory before unloading (default: 5)
+            offload_to_cpu (bool): If True, use CPU RAM instead of GPU memory (default: False)
+        """
+        self._models: OrderedDict = OrderedDict()  # LRU cache for loaded models
+        self._lock = Lock()  # Thread lock for safe concurrent access
+        self._max_models = max_models  # Max number of models to cache
+        self._offload_to_cpu = (
+            offload_to_cpu  # Whether to offload models to CPU instead of GPU
+        )
+        self._device = (
+            torch.device("cpu")
+            if self._offload_to_cpu or not torch.cuda.is_available()
+            else torch.device("cuda")
+        )  # Device to load models onto
+        logger.info(f"Model manager initialized with device: {self._device}")
+
+    def _check_memory(self) -> bool:
+        """
+        Check if current memory usage is below the threshold, focusing on GPU unless offloaded to CPU.
+
+        Returns:
+            bool: True if memory usage is safe, False if it exceeds the threshold
+        """
+        if self._offload_to_cpu or not torch.cuda.is_available():
+            # Check CPU memory usage
+            mem = psutil.virtual_memory()  # System memory stats
+            total_mem_used = mem.used / 1e9  # CPU memory used in GB
+            total_mem_available = mem.total / 1e9  # Total CPU memory in GB
+        else:
+            # Check GPU memory usage
+            total_mem_used = (
+                torch.cuda.memory_allocated() / 1e9
+            )  # GPU memory used in GB
+            total_mem_available = (
+                torch.cuda.get_device_properties(0).total_memory / 1e9
+            )  # Total GPU memory in GB
+
+        usage_ratio = total_mem_used / total_mem_available
+        logger.debug(
+            f"Memory usage on {self._device}: {usage_ratio:.2%} (threshold: {MEMORY_THRESHOLD})"
+        )
+        return usage_ratio < MEMORY_THRESHOLD
+
+    def _unload_lru_model(self):
+        """Unload the least recently used model to free memory."""
+        with self._lock:
+            if self._models:
+                model_info, model_instance = self._models.popitem(
+                    last=False
+                )  # Remove oldest entry
+                logger.info(
+                    f"Unloading model {model_info} from {self._device} to free memory"
+                )
+                # Move model to CPU before deletion to ensure GPU memory is freed
+                if not self._offload_to_cpu and torch.cuda.is_available():
+                    model_instance.model = model_instance.model.cpu()
+                del model_instance  # Explicitly delete reference
+                clear_cuda_cache()  # Clear GPU memory cache if applicable
+                logger.debug(f"Memory freed from {self._device}")
 
     def get_model(self, model_info: ModelInfo) -> Model:
         """
-        Get a model and its preprocessor from the memory if already loaded, else load it from cache or download it from the hf hub
-        Args
-            - model_name: name of the model, must be one of the option in the ModelEnum enum
+        Retrieve or load a model, managing memory constraints on the chosen device (GPU or CPU).
+
+        Args:
+            model_info (ModelInfo): Metadata for the model to load
+
+        Returns:
+            Model: The loaded model instance with config and preprocessor
+
+        Raises:
+            ValueError: If model_info is invalid
         """
-        # Check if model already loaded, return it
-        if model_info in self._models.keys():
-            return self._models[model_info]
+        with self._lock:
+            # If model is already loaded, move it to the end (most recently used) and return it
+            if model_info in self._models:
+                self._models.move_to_end(model_info)
+                return self._models[model_info]
 
-        if model_info.checkpoint_name == "" and (
-            model_info.repo_id == "" and model_info.file_name == ""
-        ):
-            raise ValueError(
-                "either checkpoint_name or repo_id and file_name must be provided"
-            )
+            # Ensure memory is available by unloading models if necessary
+            while not self._check_memory() or len(self._models) >= self._max_models:
+                self._unload_lru_model()
 
-        # if checkpoint_name is provided, we load model via transformers.from_pretrained(checkpoint_name)
-        # transformers model cache their models separately
-        if model_info.checkpoint_name:
-            return load_transformers_model(model_info)
+            # Load the model based on its metadata
+            if model_info.checkpoint_name:
+                model = load_transformers_model(model_info, self._device)
+            elif model_info.repo_id and model_info.file_name:
+                model_file_path = get_cached_or_download_model_from_hf(
+                    repo_id=model_info.repo_id, file_name=model_info.file_name
+                )
+                model = load_model_from_file(model_info, model_file_path, self._device)
+            else:
+                raise ValueError(
+                    "Invalid model info: must provide checkpoint_name or repo_id/file_name"
+                )
 
-        # if the repo_id and the file_name are specified, use them to download the model from hugging face
-        # or load from cached folder if already downloaded
-        if model_info.repo_id and model_info.file_name:
-            model_file_path = get_cached_or_download_model_from_hf(
-                repo_id=model_info.repo_id, file_name=model_info.file_name
-            )
-            return load_model_from_file(model_info, model_file_path)
+            # Cache the loaded model
+            self._models[model_info] = model
+            logger.info(f"Loaded and cached model {model_info} on {self._device}")
+            return model
+
+    def unload_model(self, model_info: ModelInfo):
+        """
+        Manually unload a specific model from memory.
+
+        Args:
+            model_info (ModelInfo): Metadata of the model to unload
+        """
+        with self._lock:
+            if model_info in self._models:
+                model_instance = self._models[model_info]
+                # Move model to CPU before deletion if on GPU
+                if not self._offload_to_cpu and torch.cuda.is_available():
+                    model_instance.model = model_instance.model.cpu()
+                del self._models[model_info]
+                clear_cuda_cache()  # Clear GPU memory cache if applicable
+                logger.info(f"Manually unloaded model {model_info} from {self._device}")
 
 
-# load the model, its configuration and preprocessor
-def load_model_from_file(model_info: ModelInfo, model_file_path: str) -> Model:
+def load_model_from_file(
+    model_info: ModelInfo, model_file_path: str, device: torch.device
+) -> Model:
+    """
+    Load a model from a file (e.g., custom weights from Hugging Face).
+
+    Args:
+        model_info (ModelInfo): Metadata for the model
+        model_file_path (str): Path to the model weights file
+        device (torch.device): Device to load the model onto (CPU or GPU)
+
+    Returns:
+        Model: Loaded model instance
+    """
     if model_info.repo_id == "suno/bark":
-        return load_bark_model(model_info, model_file_path)
-
-    raise ValueError(f"unknown how to load model {model_info}")
-
-
-def load_transformers_model(model_info: ModelInfo) -> Model:
-    pass
+        return load_bark_model(model_info, model_file_path, device)
+    raise ValueError(f"Unknown how to load model {model_info}")
 
 
-def load_bark_model(model_info: ModelInfo, model_file_path: str) -> Model:
-    if not os.path.exists(model_file_path):
-        raise RuntimeError(
-            f"not found a file at {model_file_path} but it should be there at this point"
-        )
+def load_transformers_model(model_info: ModelInfo, device: torch.device) -> Model:
+    """
+    Load a model using Hugging Face's transformers library.
 
-    # we know that bark's models are saved by torch.save()
-    checkpoint = torch.load(
-        model_file_path, map_location=torch.device(env.DEVICE), weights_only=False
-    )
-    if model_info.model_type not in ["text", "coarse", "fine"]:
-        raise ValueError(f"unknown how to load model_type {model_info.model_type}")
+    Args:
+        model_info (ModelInfo): Metadata for the model
+        device (torch.device): Device to load the model onto (CPU or GPU)
 
+    Returns:
+        Model: Loaded model instance
+    """
+    if model_info.checkpoint_name == "facebook/encodec_24khz":
+        model = EncodecModel.encodec_model_24khz()
+        model.encode()
+        model = model.to(device)
+        return Model(model)
+    raise NotImplementedError("Only Encodec 24k supported for now")
+
+
+def load_bark_model(
+    model_info: ModelInfo, model_file_path: str, device: torch.device
+) -> Model:
+    """
+    Load a Bark model from a file.
+
+    Args:
+        model_info (ModelInfo): Metadata for the Bark model
+        model_file_path (str): Path to the model weights file
+        device (torch.device): Device to load the model onto (CPU or GPU)
+
+    Returns:
+        Model: Loaded Bark model instance with config and optional tokenizer
+    """
+    # Load checkpoint directly to the specified device
+    checkpoint = torch.load(model_file_path, map_location=device)
     ConfigClass, ModelClass = (
         (GPTConfig, GPT)
         if model_info.model_type in ["text", "coarse"]
         else (FineGPTConfig, FineGPT)
     )
-
-    model_args = checkpoint["model_args"]
-    if "input_vocab_size" not in model_args:
-        model_args["input_vocab_size"] = model_args["vocab_size"]
-        model_args["output_vocab_size"] = model_args["vocab_size"]
-        del model_args["vocab_size"]
-
     conf = ConfigClass(**checkpoint["model_args"])
     model = ModelClass(conf)
-
-    state_dict: Dict[str, Any] = checkpoint["model"]  # type of state_dict?
-    # this fix is specific to this model
-    state_dict = _update_bark_state_dict(model, state_dict)
+    state_dict = _update_bark_state_dict(model, checkpoint["model"])
     model.load_state_dict(state_dict, strict=False)
 
-    n_params = model.get_num_params()
-    val_loss = checkpoint["best_val_loss"].item()
-    logger.info(
-        f"model loaded: {round(n_params/1e6,1)}M params, {round(val_loss,3)} loss"
-    )
+    model = model.to(device)  # Ensure model is on the correct device
     model.eval()
-    del checkpoint, state_dict
-    clear_cuda_cache()
+    logger.info(f"Loaded Bark model: {model_info} on {device}")
 
-    if model_info.model_type == "text":
-        tokenizer = BertTokenizer.from_pretrained("bert-base-multilingual-cased")
-        return Model(model, conf, tokenizer)
-
-    return Model(model)
+    # Add tokenizer for text models (tokenizer stays on CPU as it doesn't require GPU)
+    preprocessor = (
+        BertTokenizer.from_pretrained("bert-base-multilingual-cased")
+        if model_info.model_type == "text"
+        else None
+    )
+    return Model(model, conf, preprocessor)
 
 
 def _update_bark_state_dict(model: GPT, state_dict: Dict[str, Any]) -> Dict[str, Any]:
-    unwanted_prefix = "_orig_mod."
-    # make a copy of the state_dict's keys,
-    # it is dangerous to loop over a list while mutating that list
-    keys = list(state_dict.keys())
+    """
+    Update the state dictionary by removing unwanted prefixes (specific to Bark models).
 
-    for key in keys:
+    Args:
+        model (GPT): The model instance to align the state dict with
+        state_dict (Dict[str, Any]): The loaded state dictionary
+
+    Returns:
+        Dict[str, Any]: Updated state dictionary
+    """
+    unwanted_prefix = "_orig_mod."
+    for key in list(state_dict.keys()):
         if key.startswith(unwanted_prefix):
             state_dict[key[len(unwanted_prefix) :]] = state_dict.pop(key)
-
-    extra_keys = set(state_dict.keys()) - set(model.state_dict().keys())
-    extra_keys = set([k for k in extra_keys if not k.endswith(".attn.bias")])
-    missing_keys = set(model.state_dict().keys()) - set(state_dict.keys())
-    missing_keys = set([k for k in missing_keys if not k.endswith(".attn.bias")])
-    if len(extra_keys) != 0:
-        raise ValueError(f"extra keys found: {extra_keys}")
-    if len(missing_keys) != 0:
-        raise ValueError(f"missing keys: {missing_keys}")
     return state_dict
 
 
-# load the Facebook's encodec model
-@validate_call
-def _load_codec_model(
-    model_type: EncodecModelType = EncodecModelType.ENCODEC24,
-    target_bandwidth: EncodecTargetBandwidth = EncodecTargetBandwidth.BANDWIDTH_6,
-) -> None:
-    if model_type == EncodecModelType.ENCODEC24:
-        assert target_bandwidth in [
-            1.5,
-            3,
-            6,
-            12,
-        ], "target_bandwidth of a 24khz model must be one of [1.5, 3, 6, 12], received {target_bandwidth}"
-    else:
-        assert target_bandwidth in [
-            3,
-            6,
-            12,
-            24,
-        ], f"target_bandwidth of a 48khz model must be one of [3, 6, 12, 24], received {target_bandwidth}"
-
-    model = (
-        EncodecModel.encodec_model_24khz()
-        if model_type == EncodecModelType.ENCODEC24
-        else EncodecModel.encodec_model_48khz()
-    )
-
-    model.encode()
-    return Model(
-        model,
-        None,
-    )
-
-
+# Instantiate the global model manager with default GPU priority
 torch_models = TorchModels()
