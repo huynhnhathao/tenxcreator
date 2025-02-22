@@ -89,6 +89,14 @@ def generate_semantic_tokens_from_text(
     assert text_model.model is not None, "text model is None"
     assert text_model.preprocessor is not None, "tokenizer for the text model is None"
 
+    assert isinstance(
+        text_model.model, GPT
+    ), f"expecting model of type GPT, got {type(text_model.model)}"
+
+    assert isinstance(
+        text_model.preprocessor, BertTokenizer
+    ), f"expecting preprocessor of type BertTokenizer, got {type(text_model.preprocessor)}"
+
     model: GPT = text_model.model
     tokenizer: BertTokenizer = text_model.preprocessor
 
@@ -204,8 +212,8 @@ def _generate_semantic(
         logits, kv_cache = model(
             x_input,
             merge_context=True,  # Merges text and semantic history context
-            use_cache=use_kv_caching,  # Enables caching if requested
             past_kv=kv_cache,  # Previous attention states
+            use_cache=use_kv_caching,  # Enables caching if requested
         )
 
         # Sample the next token and check for early stopping

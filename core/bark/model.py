@@ -190,6 +190,7 @@ class GPT(nn.Module):
             )
         )
         self.lm_head = nn.Linear(config.n_embd, config.output_vocab_size, bias=False)
+        # Note: lm_head lacks bias, implying parameter sharing with wte for efficiency
 
     def get_num_params(self, non_embedding: bool = True) -> int:
         """
@@ -208,28 +209,31 @@ class GPT(nn.Module):
         self,
         idx: torch.Tensor,
         merge_context: bool = False,
-        past_kv: torch.tensor = None,
+        past_kv: torch.Tensor = None,
         position_ids: torch.Tensor = None,
         use_cache: bool = False,
     ):
         device = idx.device
         b, t = idx.size()
         if past_kv is not None:
-            assert t == 1
-            tok_emb = self.transformer.wte(
-                idx
-            )  # token embeddings of shape (b, t, n_embd)
+            # When past_kv is provided, this is optimized for autoregressive generation
+            assert (
+                t == 1
+            ), "should only pass in the last token of the sequence when using kv_cache"
+            # Shape: (b, 1, n_embd), single token case
+            tok_emb = self.transformer.wte(idx)
         else:
             if merge_context:
+                # Custom feature: assumes first 256 tokens are one context, next 256 another, rest is sequence
                 assert idx.shape[1] >= 256 + 256 + 1
-                t = idx.shape[1] - 256
+                t = idx.shape[1] - 256  # Adjusts t for merged context length
             else:
                 assert (
                     t <= self.config.block_size
                 ), f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
 
-            # forward the GPT model itself
             if merge_context:
+                # Merges two contexts by adding their embeddings, not a standard GPT behavior
                 tok_emb = torch.cat(
                     [
                         self.transformer.wte(idx[:, :256])
@@ -239,45 +243,44 @@ class GPT(nn.Module):
                     dim=1,
                 )
             else:
-                tok_emb = self.transformer.wte(
-                    idx
-                )  # token embeddings of shape (b, t, n_embd)
+                tok_emb = self.transformer.wte(idx)
 
         if past_kv is None:
             past_length = 0
+            # Empty cache for each layer
             past_kv = tuple([None] * len(self.transformer.h))
         else:
+            # Infers prior sequence length from cache
             past_length = past_kv[0][0].size(-2)
 
         if position_ids is None:
             position_ids = torch.arange(
                 past_length, t + past_length, dtype=torch.long, device=device
             )
-            position_ids = position_ids.unsqueeze(0)  # shape (1, t)
+            position_ids = position_ids.unsqueeze(0)
             assert position_ids.shape == (1, t)
 
-        pos_emb = self.transformer.wpe(
-            position_ids
-        )  # position embeddings of shape (1, t, n_embd)
+        pos_emb = self.transformer.wpe(position_ids)
 
         x = self.transformer.drop(tok_emb + pos_emb)
 
+        # Prepares cache for key-value pairs if enabled
         new_kv = () if use_cache else None
 
         for i, (block, past_layer_kv) in enumerate(zip(self.transformer.h, past_kv)):
             x, kv = block(x, past_kv=past_layer_kv, use_cache=use_cache)
-
             if use_cache:
-                new_kv = new_kv + (kv,)
+                new_kv = new_kv + (kv,)  # Accumulates new key-value pairs for caching
 
         x = self.transformer.ln_f(x)
 
-        # inference-time mini-optimization: only forward the lm_head on the very last position
-        logits = self.lm_head(
-            x[:, [-1], :]
-        )  # note: using list [-1] to preserve the time dim
+        # Optimization: only computes logits for the last token, efficient for generation
+        logits = self.lm_head(x[:, [-1], :])  # Preserves time dim with [-1]
 
-        return (logits, new_kv)
+        return (
+            logits,
+            new_kv,
+        )  # Returns tuple: logits for next token, cache if requested
 
 
 class NonCausalSelfAttention(nn.Module):
