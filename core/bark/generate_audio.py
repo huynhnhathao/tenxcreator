@@ -1,3 +1,6 @@
+import os
+from dataclasses import dataclass, asdict
+
 from core.bark.generate_semantic import generate_semantic_tokens_from_text
 
 import numpy as np
@@ -11,50 +14,102 @@ from core.utils import read_audio_file
 from core.gvar import env
 
 
+CUR_PATH = os.path.dirname(os.path.abspath(__file__))
+
+
+@dataclass
 class BarkPrompt:
     semantic_prompt: torch.Tensor
     coarse_prompt: torch.Tensor
     fine_prompt: torch.Tensor
 
 
+@dataclass
+class GenerateAudioConfig:
+    temperature: float = 0.7
+    top_k: Union[int, None] = None
+    top_k: Union[int, None] = (None,)
+    top_p: Union[int, None] = (None,)
+    silent: Union[bool, None] = (False,)
+    min_eos_p: float = (0.2,)
+    max_gen_duration_second: Union[float, None] = (None,)
+    allow_early_stop: bool = (True,)
+    use_kv_caching: bool = (False,)
+
+
+generation_config = GenerateAudioConfig()
+
+
 def generate_audio(
     text: str,
-    prompt: Union[str, None] = None,
-    temperature: float = 0.7,
-    top_k: Union[int, None] = None,
-    top_p: Union[int, None] = None,
-    silent: Union[bool, None] = False,
-    min_eos_p: float = 0.2,
-    max_gen_duration_second: Union[float, None] = None,
-    allow_early_stop: bool = True,
-    use_kv_caching: bool = False,
+    prompt_file_path: Union[str, None] = None,
+    generation_config: GenerateAudioConfig = generation_config,
 ) -> np.ndarray:
     """
     Generate audio from text with an optional audio prompt
     Args:
         text (str): Input text to generate audio. Must be non-empty.
         prompt (Union[str, None]): optional path to a prompt file of type .npz that will be used as the audio prompt
-        temperature (float): Sampling temperature for token generation. Higher values produce more random outputs.
-            Defaults to 0.7.
-        top_k (Union[int, None]): If set, limits sampling to top-k tokens. Defaults to None.
-        top_p (Union[int, None]): If set, uses nucleus sampling with this probability threshold. Defaults to None.
-        silent (Union[bool, None]): If True, suppresses progress output. Defaults to False.
-        min_eos_p (float): Stop generating new token if the probability of the EOS token is greater than or equal to this p. Defaults to 0.2.
-        max_gen_duration_second (Union[float, None]): Maximum duration in seconds for the audio to be generated, set as an early stopping condition. Defaults to None.
-        allow_early_stop (bool): Whether to allow early stopping based on EOS probability. Defaults to True.
-        use_kv_caching (bool): Whether to use key-value caching for faster generation. Defaults to False.
+        generation_config: configurations to generate audio
 
     """
 
-    prompt = load_bark_audio_prompt()
+    prompt = load_bark_audio_prompt(prompt_file_path)
+
+    semantic_tokens = generate_semantic_tokens_from_text(
+        text, prompt.semantic_prompt, **asdict(generation_config)
+    )
+
+    # coarse token generation
+
+    # fine token generation
+
+    # decoding the codes
+
+    # return the final audio
+
+    return np.ndarray([])
 
 
-def load_bark_audio_prompt(path: str) -> BarkPrompt:
-    pass
+def load_bark_audio_prompt(file_path: str) -> BarkPrompt:
+    """
+    Load a saved audio prompt from a .npz file. The file is expected to have 3 keys,
+    semantic_prompt, coarse_prompt, fine_prompt, each of them is a np.ndarray
+    """
+    assert isinstance(
+        file_path, str
+    ), f"expecting a string type argument, received {type(file_path)} of value {file_path}"
+
+    prompt = {}
+    if file_path.endswith(".npz"):
+        prompt = np.load(file_path)
+    else:
+        file_path = os.path.join(*file_path.split("/"))
+        prompt = np.load(
+            os.path.join(CUR_PATH, "assets", "prompts", f"{file_path}.npz")
+        )
+
+    assert isinstance(
+        prompt, dict
+    ), f"expecting prompt of type dict, received {type(prompt)} value {prompt}"
+
+    assert (
+        "semantic_prompt" in prompt.keys()
+        and "coarse_prompt" in prompt.keys()
+        and "fine_prompt" in prompt.keys()
+    ), f"invalid prompt data {prompt}"
+
+    return BarkPrompt(
+        prompt["semantic_prompt"], prompt["coarse_prompt"], prompt["fine_prompt"]
+    )
 
 
 def create_prompt_from_audio(
-    audio_file_path: str, max_duration: int, sample_rate: int
+    audio_file_path: str, max_duration: int, sample_rate: int, save_prompt: bool = True
 ) -> BarkPrompt:
+    """
+    To create a prompt from an audio file, we need to forward the text transcript and the
+    audio samples of the prompt through the 3 models of Bark to get 3 arrays: semantic, coarse and fine
+    """
     wav, sr = torchaudio.load(audio_file_path)
     pass

@@ -11,14 +11,13 @@ from typing_extensions import List, Tuple, Optional, Union, Sequence
 
 # from pydantic import validate_call
 
+
 from core.gvar import torch_models, ModelEnum, env
 from core.bark.custom_context import inference_mode
 from core.bark.utils import _clear_cuda_cache
 from core.model import GPT
 
 SEMANTIC_VOCAB_SIZE = 10_000
-# CUR_PATH = os.path.dirname(os.path.abspath(__file__))
-
 
 # for the BERT model to get semantic tokens from raw texts
 TEXT_ENCODING_OFFSET = 10_048
