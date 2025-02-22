@@ -82,7 +82,9 @@ def generate_semantic_tokens_from_text(
     # load the GPT style model that generate semantic token from text
     # and the BERT tokenizer to memory
     text_model_info = (
-        ModelEnum.BARK_TEXT_SMALL if env.SUNO_USE_SMALL_MODELS else ModelEnum.BARK_TEXT
+        ModelEnum.BARK_TEXT_SMALL.value
+        if env.SUNO_USE_SMALL_MODELS
+        else ModelEnum.BARK_TEXT.value
     )
 
     text_model = torch_models.get_model(text_model_info)

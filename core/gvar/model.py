@@ -54,24 +54,26 @@ class EncodecTargetBandwidth(float, Enum):
     BANDWIDTH_24 = 24  # 24 kbps (n_q = 32)
 
 
-@dataclass
+@dataclass(frozen=True)
 class ModelInfo:
     """Data structure to hold metadata about a model."""
 
-    repo_id: Optional[str] = None  # Hugging Face repository ID (e.g., "suno/bark")
-    file_name: Optional[str] = None  # Filename of the model weights (e.g., "text.pt")
-    checkpoint_name: Optional[str] = (
-        None  # Pretrained checkpoint name (e.g., "facebook/encodec_24khz")
-    )
-    config_class: Optional[type] = None  # Configuration class for the model
-    model_class: Optional[type] = None  # Model class to instantiate
-    preprocessor_class: Optional[type] = None  # Preprocessor class (e.g., tokenizer)
-    model_type: Optional[str] = (
-        None  # Type of model (e.g., "text", "coarse", "encodec")
-    )
-    use_load_state_dict: Optional[bool] = (
-        False  # Whether to use load_state_dict vs torch.load
-    )
+    # Hugging Face repository ID (e.g., "suno/bark")
+    repo_id: Optional[str] = None
+    # Filename of the model weights (e.g., "text.pt")
+    file_name: Optional[str] = None
+    # Pretrained checkpoint name (e.g., "facebook/encodec_24khz")
+    checkpoint_name: Optional[str] = None
+    # Configuration class for the model
+    config_class: Optional[type] = None
+    # Model class to instantiate
+    model_class: Optional[type] = None
+    # Preprocessor class (e.g., tokenizer)
+    preprocessor_class: Optional[type] = None
+    # Type of model (e.g., "text", "coarse", "encodec")
+    model_type: Optional[str] = None
+    # Whether to use load_state_dict vs torch.load
+    use_load_state_dict: Optional[bool] = False
 
 
 @dataclass
@@ -229,9 +231,9 @@ class TorchModels:
                 self._unload_lru_model()
 
             # Load the model based on its metadata
-            if model_info.checkpoint_name:
+            if model_info.checkpoint_name is not None:
                 model = load_transformers_model(model_info, self._device)
-            elif model_info.repo_id and model_info.file_name:
+            elif model_info.repo_id is not None and model_info.file_name is not None:
                 model_file_path = get_cached_or_download_model_from_hf(
                     repo_id=model_info.repo_id, file_name=model_info.file_name
                 )
