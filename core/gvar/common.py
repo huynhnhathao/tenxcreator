@@ -1,116 +1,227 @@
+"""
+Global Constants and Utility Module
+
+This module manages global constant variables and utility functions for the application. It handles environment
+variable loading, device selection (CPU/GPU/MPS), and model caching from Hugging Face Hub. The primary goal is to
+provide a centralized, type-safe, and configurable way to access global settings and common utilities.
+
+Key Components:
+- EnvVars: Manages environment variables with type-safe loading and runtime updates.
+- Device Management: Selects the best available device (GPU, MPS, or CPU) based on configuration.
+- Model Caching: Downloads and caches models from Hugging Face Hub.
+- CUDA Utilities: Provides functions to manage CUDA memory.
+
+Usage:
+    from gvar.common import env, get_cached_or_download_model_from_hf
+    print(env.DEVICE)  # Access the selected device
+    model_path = get_cached_or_download_model_from_hf("suno/bark", "text.pt")
+"""
+
 import os
 import logging
 from dotenv import load_dotenv
 from enum import Enum, StrEnum
-from typing import ClassVar
-
+from typing import ClassVar, Dict, Any
 import torch
 from huggingface_hub import hf_hub_download
 
-# Configure logging
+# Configure logging with a default level (will be updated by EnvVars)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def grab_best_device(use_gpu: bool) -> str:
-    if torch.cuda.device_count() > 0 and use_gpu:
+class LogLevel(StrEnum):
+    """Enumeration of valid logging levels."""
+
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    CRITICAL = "CRITICAL"
+
+
+def grab_best_device(use_gpu: bool, enable_mps: bool) -> str:
+    """
+    Determine the best available device for PyTorch operations.
+
+    Args:
+        use_gpu (bool): Whether to prioritize GPU/MPS over CPU.
+        enable_mps (bool): Whether to allow MPS (Metal Performance Shaders) on Apple Silicon.
+
+    Returns:
+        str: Device identifier ("cuda", "mps", or "cpu").
+    """
+    if use_gpu and torch.cuda.is_available():
         device = "cuda"
-    elif (
-        torch.backends.mps.is_available() and use_gpu and globals()["GLOBAL_ENABLE_MPS"]
-    ):
+        logger.debug("Selected CUDA device (GPU available)")
+    elif use_gpu and enable_mps and torch.backends.mps.is_available():
         device = "mps"
+        logger.debug("Selected MPS device (Apple Silicon GPU available)")
     else:
         device = "cpu"
+        logger.debug("Selected CPU device (no GPU/MPS available or disabled)")
     return device
 
 
-class EnvVars:
-    """Class to store and manage environment variables with type hints and documentation"""
+def clear_cuda_cache() -> None:
+    """
+    Clear the CUDA memory cache if GPU is available.
 
-    # List of environment variables to load with their default values
-    _VARS: ClassVar[dict] = {
-        "GLOBAL_ENABLE_MPS": True,  # enable pytorch's metal performance shaders on Apple silicon chips
-        "AUDIO_SAMPLE_RATE": 24000,  # default sample rate for all audio files
-        "SUNO_USE_SMALL_MODELS": False,  # if use small models when working with BARK
+    Raises:
+        RuntimeError: If CUDA operations fail unexpectedly.
+    """
+    if torch.cuda.is_available():
+        try:
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            logger.debug("CUDA cache cleared successfully")
+        except RuntimeError as e:
+            logger.error(f"Failed to clear CUDA cache: {str(e)}")
+            raise RuntimeError(f"CUDA cache clear failed: {str(e)}")
+
+
+class EnvVars:
+    """
+    Class to manage and expose environment variables with type safety and runtime configurability.
+
+    Loads variables from a .env file or system environment, applies defaults if not found, and allows updates
+    at runtime. Variables are stored as instance attributes rather than polluting the global namespace.
+    """
+
+    # Default values for environment variables
+    _DEFAULTS: ClassVar[Dict[str, Any]] = {
+        "GLOBAL_ENABLE_MPS": True,  # Enable PyTorch's Metal Performance Shaders on Apple Silicon
+        "AUDIO_SAMPLE_RATE": 24000,  # Default sample rate for audio processing (in Hz)
+        "SUNO_USE_SMALL_MODELS": True,  # Use smaller Bark models if True
         "CACHE_DIR": os.path.join(
             os.path.expanduser("~"), ".cache/tenxcreator"
-        ),  # everything that worth caching will be stored in this directory
-        "LOG_LEVEL": "INFO",
-        "USE_GPU": True,
+        ),  # Cache directory path
+        "LOG_LEVEL": LogLevel.INFO,  # Default logging level
+        "USE_GPU": True,  # Whether to prioritize GPU/MPS over CPU
     }
 
-    # Load environment variables from .env file
-    load_dotenv()
+    def __init__(self) -> None:
+        """Initialize the EnvVars instance and load variables."""
+        self._vars: Dict[str, Any] = {}
+        self._load_env_vars()
+        self._update_attributes()
 
-    # Load and validate environment variables
-    for var_name, default_value in _VARS.items():
-        value = os.getenv(var_name)
-        if value is None:
-            logger.info(
-                f"{var_name} not found in environment, using default: {default_value}"
-            )
-            globals()[var_name] = default_value
-        else:
-            # Convert to appropriate type based on default value
-            if isinstance(default_value, bool):
-                globals()[var_name] = value.lower() in ("true", "1", "t")
-            elif isinstance(default_value, int):
-                globals()[var_name] = int(value)
-            elif isinstance(default_value, float):
-                globals()[var_name] = float(value)
+    def _load_env_vars(self) -> None:
+        """Load environment variables from .env file or system, falling back to defaults."""
+        load_dotenv()  # Load .env file into os.environ
+        for var_name, default_value in self._DEFAULTS.items():
+            value = os.getenv(var_name)
+            if value is None:
+                logger.info(
+                    f"{var_name} not found in environment, using default: {default_value}"
+                )
+                self._vars[var_name] = default_value
             else:
-                globals()[var_name] = value
-            logger.info(f"{var_name} loaded from environment: {globals()[var_name]}")
+                # Convert value to the appropriate type based on default
+                if isinstance(default_value, bool):
+                    self._vars[var_name] = value.lower() in ("true", "1", "t")
+                elif isinstance(default_value, int):
+                    self._vars[var_name] = int(value)
+                elif isinstance(default_value, float):
+                    self._vars[var_name] = float(value)
+                elif isinstance(default_value, LogLevel):
+                    self._vars[var_name] = LogLevel(value.upper())
+                else:
+                    self._vars[var_name] = value
+                logger.info(
+                    f"{var_name} loaded from environment: {self._vars[var_name]}"
+                )
 
-    # Set logging level from environment
-    logging.getLogger().setLevel(globals()["LOG_LEVEL"])
+    def _update_attributes(self) -> None:
+        """Update instance attributes and apply settings (e.g., logging level, device)."""
+        # Set instance attributes
+        self.GLOBAL_ENABLE_MPS: bool = self._vars["GLOBAL_ENABLE_MPS"]
+        self.AUDIO_SAMPLE_RATE: int = self._vars["AUDIO_SAMPLE_RATE"]
+        self.SUNO_USE_SMALL_MODELS: bool = self._vars["SUNO_USE_SMALL_MODELS"]
+        self.CACHE_DIR: str = self._vars["CACHE_DIR"]
+        self.LOG_LEVEL: LogLevel = self._vars["LOG_LEVEL"]
+        self.USE_GPU: bool = self._vars["USE_GPU"]
+        self.DEVICE: str = grab_best_device(self.USE_GPU, self.GLOBAL_ENABLE_MPS)
 
-    # Expose variables as class attributes with type hints
-    GLOBAL_ENABLE_MPS: bool = globals()["GLOBAL_ENABLE_MPS"]
-    AUDIO_SAMPLE_RATE: int = globals()["AUDIO_SAMPLE_RATE"]
-    SUNO_USE_SMALL_MODELS: bool = globals()["SUNO_USE_SMALL_MODELS"]
-    CACHE_DIR: str = globals()["CACHE_DIR"]
-    LOG_LEVEL: str = globals()["LOG_LEVEL"]
-    DEVICE: str = grab_best_device(globals()["USE_GPU"])
+        # Apply logging level
+        logging.getLogger().setLevel(self.LOG_LEVEL.value)
+
+    def update(self, var_name: str, value: Any) -> None:
+        """
+        Update an environment variable at runtime and reapply settings.
+
+        Args:
+            var_name (str): Name of the variable to update (must be in _DEFAULTS).
+            value (Any): New value for the variable.
+
+        Raises:
+            KeyError: If var_name is not a recognized environment variable.
+        """
+        if var_name not in self._DEFAULTS:
+            raise KeyError(f"Unknown environment variable: {var_name}")
+
+        # Convert value to the appropriate type based on default
+        default_type = type(self._DEFAULTS[var_name])
+        if default_type is bool:
+            self._vars[var_name] = bool(
+                value.lower() in ("true", "1", "t") if isinstance(value, str) else value
+            )
+        elif default_type is int:
+            self._vars[var_name] = int(value)
+        elif default_type is float:
+            self._vars[var_name] = float(value)
+        elif default_type is LogLevel:
+            self._vars[var_name] = LogLevel(
+                value.upper() if isinstance(value, str) else value
+            )
+        else:
+            self._vars[var_name] = value
+
+        logger.info(f"Updated {var_name} to {self._vars[var_name]}")
+        self._update_attributes()
 
 
-# Create instance to load and expose variables
+# Create global instance to access environment variables
 env = EnvVars()
-
-
-def clear_cuda_cache():
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-        torch.cuda.synchronize()
 
 
 def get_cached_or_download_model_from_hf(
     repo_id: str, file_name: str, cache_dir: str = env.CACHE_DIR
 ) -> str:
-    """Download a model from Hugging Face Hub if not already cached.
+    """
+    Download a model from Hugging Face Hub if not already cached.
 
     Args:
-        repo_id: The repository ID on Hugging Face Hub (e.g., 'suno/bark')
-        file_name: The name of the model file to download
-        cache_dir: Directory to store cached models (defaults to env.CACHE_DIR)
+        repo_id (str): The repository ID on Hugging Face Hub (e.g., 'suno/bark').
+        file_name (str): The name of the model file to download (e.g., 'text.pt').
+        cache_dir (str): Directory to store cached models (defaults to env.CACHE_DIR).
 
     Returns:
-        str: The full path to the downloaded/cached model file
+        str: The full path to the downloaded or cached model file.
 
     Raises:
-        OSError: If there are issues creating the cache directory
-        RuntimeError: If the download fails
+        OSError: If the cache directory cannot be created.
+        RuntimeError: If the download from Hugging Face fails.
     """
-    os.makedirs(cache_dir, exist_ok=True)
+    # Ensure cache directory exists
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+    except OSError as e:
+        logger.error(f"Failed to create cache directory {cache_dir}: {str(e)}")
+        raise
 
-    # Check if file already exists in cache
+    # Check if file is already cached
     cached_path = os.path.join(cache_dir, file_name)
     if os.path.exists(cached_path):
+        logger.debug(f"Model found in cache: {cached_path}")
         return cached_path
 
-    # Download if not cached
+    # Download from Hugging Face if not cached
+    logger.info(f"Downloading model {repo_id}/{file_name} to {cache_dir}")
     try:
         hf_hub_download(repo_id=repo_id, filename=file_name, local_dir=cache_dir)
+        logger.debug(f"Model downloaded successfully to {cached_path}")
         return cached_path
     except Exception as e:
+        logger.error(f"Failed to download model {repo_id}/{file_name}: {str(e)}")
         raise RuntimeError(f"Failed to download model {repo_id}/{file_name}: {str(e)}")

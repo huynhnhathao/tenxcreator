@@ -24,7 +24,7 @@ from threading import Lock
 import torch
 from transformers import BertTokenizer
 from encodec import EncodecModel
-from core.gvar.common import get_cached_or_download_model_from_hf, clear_cuda_cache
+from core.gvar.common import get_cached_or_download_model_from_hf, clear_cuda_cache, env
 from core.bark.model import GPTConfig, FineGPTConfig, GPT, FineGPT
 from collections import OrderedDict
 
@@ -360,4 +360,4 @@ def _update_bark_state_dict(model: GPT, state_dict: Dict[str, Any]) -> Dict[str,
 
 
 # Instantiate the global model manager with default GPU priority
-torch_models = TorchModels()
+torch_models = TorchModels(offload_to_cpu=False if env.USE_GPU else True)
