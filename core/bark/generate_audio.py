@@ -28,13 +28,13 @@ class BarkPrompt:
 class GenerateAudioConfig:
     temperature: float = 0.7
     top_k: Union[int, None] = None
-    top_k: Union[int, None] = (None,)
-    top_p: Union[int, None] = (None,)
-    silent: Union[bool, None] = (False,)
-    min_eos_p: float = (0.2,)
-    max_gen_duration_second: Union[float, None] = (None,)
-    allow_early_stop: bool = (True,)
-    use_kv_caching: bool = (False,)
+    top_k: Union[int, None] = None
+    top_p: Union[int, None] = None
+    silent: Union[bool, None] = False
+    min_eos_p: float = 0.2
+    max_gen_duration_second: Union[float, None] = None
+    allow_early_stop: bool = True
+    use_kv_caching: bool = False
 
 
 generation_config = GenerateAudioConfig()
@@ -80,7 +80,6 @@ def load_bark_audio_prompt(file_path: str) -> BarkPrompt:
         file_path, str
     ), f"expecting a string type argument, received {type(file_path)} of value {file_path}"
 
-    prompt = {}
     if file_path.endswith(".npz"):
         prompt = np.load(file_path)
     else:
@@ -89,14 +88,10 @@ def load_bark_audio_prompt(file_path: str) -> BarkPrompt:
             os.path.join(CUR_PATH, "assets", "prompts", f"{file_path}.npz")
         )
 
-    assert isinstance(
-        prompt, dict
-    ), f"expecting prompt of type dict, received {type(prompt)} value {prompt}"
-
     assert (
-        "semantic_prompt" in prompt.keys()
-        and "coarse_prompt" in prompt.keys()
-        and "fine_prompt" in prompt.keys()
+        prompt["semantic_prompt"] is not None
+        and prompt["coarse_prompt"] is not None
+        and prompt["fine_prompt"] is not None
     ), f"invalid prompt data {prompt}"
 
     return BarkPrompt(

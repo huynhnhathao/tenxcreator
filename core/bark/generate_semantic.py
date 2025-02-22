@@ -229,15 +229,6 @@ def _generate_semantic(
             SEMANTIC_PAD_TOKEN,
         )
 
-        # Append the new token to the sequence
-        x = torch.cat((x, next_token[None]), dim=1)
-
-        # Update duration and progress
-        total_duration_s += duration_per_step
-        if step > last_progress:
-            progress_bar.update(step - last_progress)
-            last_progress = step
-
         # Check stopping conditions
         if should_stop:
             progress_bar.update(step - last_progress + 1)
@@ -248,6 +239,15 @@ def _generate_semantic(
         if step == max_steps - 1:
             progress_bar.update(step - last_progress + 1)
             break
+
+        # Append the new token to the sequence
+        x = torch.cat((x, next_token[None]), dim=1)
+
+        # Update duration and progress
+        total_duration_s += duration_per_step
+        if step > last_progress:
+            progress_bar.update(step - last_progress)
+            last_progress = step
 
         # Clean up tensors to manage memory
         del logits, next_token
@@ -343,7 +343,7 @@ def _sample_next_token(
 
 def validate_semantic_token_output(output: torch.Tensor) -> None:
     assert torch.all(
-        (0 <= output) & (output < SEMANTIC_VOCAB_SIZE)
+        (0 <= output) & (output <= SEMANTIC_VOCAB_SIZE)
     ), "unexpected output tokens"
 
 
@@ -359,7 +359,7 @@ def trim_or_pad_array(
     array: np.ndarray, pad_token: int, max_length: int = 256
 ) -> np.ndarray:
     if len(array) > max_length:
-        return array[:max_length]
+        return array[-max_length:]
 
     array = np.pad(
         array,
