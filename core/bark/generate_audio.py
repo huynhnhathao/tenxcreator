@@ -9,19 +9,12 @@ import torchaudio
 
 from typing_extensions import List, Tuple, Optional, Union, Sequence
 
+from core.bark.data_types import BarkPrompt
 from core.utils import read_audio_file
-
 from core.gvar import env
 
 
 CUR_PATH = os.path.dirname(os.path.abspath(__file__))
-
-
-@dataclass
-class BarkPrompt:
-    semantic_prompt: torch.Tensor
-    coarse_prompt: torch.Tensor
-    fine_prompt: torch.Tensor
 
 
 @dataclass

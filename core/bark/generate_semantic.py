@@ -78,6 +78,13 @@ def generate_semantic_tokens_from_text(
     text = _preprocess_texts(text)
     assert len(text) > 0, f"invalid input text {text}"
 
+    if semantic_prompt is None:
+        semantic_prompt = np.array([])
+    else:
+        assert isinstance(
+            semantic_prompt, np.ndarray
+        ), f"expecting semantic_prompt of type np.ndarray, received {type(semantic_prompt)}"
+
     # load the GPT style model that generate semantic token from text
     # and the BERT tokenizer to memory
     text_model_info = (
@@ -111,9 +118,6 @@ def generate_semantic_tokens_from_text(
     encoded_text = trim_or_pad_array(encoded_text, TEXT_PAD_TOKEN, 256)
 
     # semantic prompt also need to be an array of 256 discrete tokens
-    if semantic_prompt is None:
-        semantic_prompt = np.array([])
-
     semantic_prompt = trim_or_pad_array(semantic_prompt, SEMANTIC_PAD_TOKEN, 256)
 
     # final input is the concatenation of the input encoded text and the semantic tokens array
