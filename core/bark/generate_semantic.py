@@ -172,7 +172,7 @@ def _generate_semantic(
         top_k: Number of top logits to consider during sampling.
         top_p: Cumulative probability threshold for nucleus sampling.
         silent: If True, suppresses progress bar output.
-        min_eos_p: Minimum EOS probability to stop generation.
+        min_eos_p: Minimum EOS probability to stop generation. Increasing this probability translate to generating longer sequence
         max_gen_duration_s: Maximum duration in seconds for generation.
         allow_early_stop: Whether to stop on EOS token or probability threshold.
         use_kv_caching: Whether to use key-value caching for efficiency.
@@ -343,8 +343,8 @@ def _sample_next_token(
 
 
 def validate_semantic_token_output(output: torch.Tensor) -> None:
-    assert all(0 <= output) and all(
-        output < SEMANTIC_VOCAB_SIZE
+    assert torch.all(
+        (0 <= output) & (output < SEMANTIC_VOCAB_SIZE)
     ), "unexpected output tokens"
 
 

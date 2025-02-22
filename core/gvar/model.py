@@ -94,7 +94,11 @@ class ModelEnum(Enum):
     """
 
     BARK_TEXT_SMALL = ModelInfo(
-        repo_id="suno/bark", file_name="text.pt", model_type="text"
+        repo_id="suno/bark",
+        file_name="text.pt",
+        model_type="text",
+        model_class=GPT,
+        preprocessor_class=BertTokenizer,
     )
     BARK_COARSE_SMALL = ModelInfo(
         repo_id="suno/bark", file_name="coarse.pt", model_type="coarse"
@@ -156,11 +160,7 @@ class TorchModels:
         self._offload_to_cpu = (
             offload_to_cpu  # Whether to offload models to CPU instead of GPU
         )
-        self._device = (
-            torch.device("cpu")
-            if self._offload_to_cpu or not torch.cuda.is_available()
-            else torch.device("cuda")
-        )  # Device to load models onto
+        self._device = torch.device(env.DEVICE)  # Device to load models onto
         logger.info(f"Model manager initialized with device: {self._device}")
 
     def _check_memory(self) -> bool:
@@ -319,7 +319,8 @@ def load_bark_model(
         Model: Loaded Bark model instance with config and optional tokenizer
     """
     # Load checkpoint directly to the specified device
-    checkpoint = torch.load(model_file_path, map_location=device)
+    # weights_only = False only for trusted source
+    checkpoint = torch.load(model_file_path, map_location=device, weights_only=False)
     ConfigClass, ModelClass = (
         (GPTConfig, GPT)
         if model_info.model_type in ["text", "coarse"]
