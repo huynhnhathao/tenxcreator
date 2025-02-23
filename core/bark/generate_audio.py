@@ -2,6 +2,7 @@ import os
 from dataclasses import dataclass, asdict
 
 from core.bark.generate_semantic import generate_semantic_tokens_from_text
+from core.bark.generate_coarse import generate_coarse_tokens
 
 import numpy as np
 import torch
@@ -27,7 +28,10 @@ class GenerateAudioConfig:
     min_eos_p: float = 0.2
     max_gen_duration_second: Union[float, None] = None
     allow_early_stop: bool = True
-    use_kv_caching: bool = False
+    use_kv_caching: bool = True
+
+    max_coarse_history: int = 630
+    sliding_window_length: int = 60
 
 
 generation_config = GenerateAudioConfig()
@@ -54,7 +58,11 @@ def generate_audio(
     )
 
     # coarse token generation
+    coarse_tokens = generate_coarse_tokens(
+        semantic_tokens, prompt, **asdict(generation_config)
+    )
 
+    print(coarse_tokens)
     # fine token generation
 
     # decoding the codes

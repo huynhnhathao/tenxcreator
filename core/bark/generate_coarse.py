@@ -14,9 +14,7 @@ from core.bark.utils import _clear_cuda_cache
 from core.gvar import torch_models, ModelEnum, env
 
 # number of coarse tokens per one semantic token for one second
-num_coarse_token_per_one_semantic_token = (
-    COARSE_RATE_HZ / SEMANTIC_RATE_HZ
-) * N_COARSE_CODEBOOKS
+num_coarse_per_semantic = (COARSE_RATE_HZ / SEMANTIC_RATE_HZ) * N_COARSE_CODEBOOKS
 
 
 def generate_coarse_tokens(
@@ -29,6 +27,7 @@ def generate_coarse_tokens(
     max_coarse_history: int = 630,
     sliding_window_length: int = 60,
     use_kv_caching: bool = False,
+    **kwargs,
 ) -> torch.Tensor:
     """
     Generate coarse audio codes from semantic tokens using a sliding window approach.
@@ -59,13 +58,11 @@ def generate_coarse_tokens(
     ), "Context exceeds model limit"
 
     # align the number of semantic history token with the given max_coarse_history
-    max_semantic_history = int(
-        max_coarse_history / num_coarse_token_per_one_semantic_token
-    )
+    max_semantic_history = int(max_coarse_history / num_coarse_per_semantic)
 
-    # Process history
+    # align the length of the provided semantic and coarse history
     semantic_history, coarse_history = _process_history_prompt(
-        history_prompt, max_semantic_history, num_coarse_token_per_one_semantic_token
+        history_prompt, max_semantic_history, num_coarse_per_semantic
     )
 
     # Load coarse model
@@ -74,15 +71,13 @@ def generate_coarse_tokens(
         if env.SUNO_USE_SMALL_MODELS
         else ModelEnum.BARK_COARSE.value
     )
-    model: GPT = torch_models.get_model(coarse_model_info)
+    model_wrapper = torch_models.get_model(coarse_model_info)
+    model: GPT = model_wrapper.model
+    assert isinstance(model, GPT), "unexpected model type"
 
-    # Prepare inputs
+    # total_steps is the number of coarse tokens the model need to predict
     total_steps = int(
-        np.floor(
-            semantic_tokens.size(0)
-            * num_coarse_token_per_one_semantic_token
-            / N_COARSE_CODEBOOKS
-        )
+        np.floor(semantic_tokens.size(0) * num_coarse_per_semantic / N_COARSE_CODEBOOKS)
         * N_COARSE_CODEBOOKS
     )
     assert (
@@ -101,7 +96,7 @@ def generate_coarse_tokens(
             total_steps,
             base_semantic_index,
             max_semantic_history,
-            num_coarse_token_per_one_semantic_token,
+            num_coarse_per_semantic,
             temperature,
             top_k,
             top_p,
@@ -205,7 +200,8 @@ def _process_history_prompt(
     semantic_history = history_prompt.semantic_prompt
     coarse_history = history_prompt.coarse_prompt
 
-    # Flatten coarse history and offset
+    # Add offset then "ravel("F")" flatten
+    coarse_history = _add_codebook_offset(coarse_history, CODEBOOK_SIZE)
     coarse_history_flat = coarse_history.T.flatten() + SEMANTIC_VOCAB_SIZE
 
     # Trim histories to fit max length
@@ -230,6 +226,16 @@ def _process_history_prompt(
     # ), "History ratio mismatch"
 
     return semantic_history, coarse_history_flat
+
+
+def _add_codebook_offset(x: torch.Tensor, offset: int) -> torch.Tensor:
+    """
+    x shape (n_codebook, T)
+    n_codebook start from 0 to n, from the second codebook row on we add offset * row_num
+    """
+    for n in range(1, x.shape[0]):
+        x[n, :] += offset * n
+    return x
 
 
 def _sample_coarse_token(
@@ -281,13 +287,13 @@ def _sample_coarse_token(
 
 
 def _generate_coarse_with_sliding_window(
-    model: GPT,  # Assuming GPT type from your model
+    model: GPT,
     full_semantic: torch.Tensor,
     coarse_history: torch.Tensor,
     total_steps: int,
     base_semantic_index: int,
     max_semantic_history: int,
-    semantic_to_coarse_ratio: float,
+    coarse_per_semantic: float,
     temperature: float,
     top_k: Optional[int],
     top_p: Optional[float],
@@ -306,7 +312,7 @@ def _generate_coarse_with_sliding_window(
         total_steps: Total number of coarse tokens to generate.
         base_semantic_index: Start index of input semantic tokens.
         max_semantic_history: Maximum semantic history length.
-        semantic_to_coarse_ratio: Coarse-to-semantic token ratio.
+        coarse_per_semantic: Coarse-to-semantic token ratio.
         temperature: Sampling temperature.
         top_k: Top-k filtering parameter.
         top_p: Top-p filtering parameter.
@@ -326,14 +332,15 @@ def _generate_coarse_with_sliding_window(
     progress_bar = tqdm(
         total=window_count, disable=silent, desc="Generating coarse tokens"
     )
-    step_counter = 0
+    step_counter = 0  # equivalent to the number of coarse tokens generated so far
 
     for _ in range(window_count):
         current_semantic_idx = base_semantic_index + int(
-            round(step_counter / semantic_to_coarse_ratio)
+            round(step_counter / coarse_per_semantic)
         )
+
         window_start = max(0, current_semantic_idx - max_semantic_history)
-        semantic_window = semantic_tensor[:, window_start : current_semantic_idx + 256]
+        semantic_window = semantic_tensor[:, window_start : window_start + 256]
         semantic_window = F.pad(
             semantic_window,
             (0, 256 - semantic_window.shape[-1]),

@@ -27,6 +27,7 @@ def generate_semantic_tokens_from_text(
     max_gen_duration_second: Union[float, None] = None,
     allow_early_stop: bool = True,
     use_kv_caching: bool = False,
+    **kwargs,
 ) -> torch.Tensor:
     """
     Generate semantic tokens from given text and optional semantic prompt.

@@ -326,7 +326,10 @@ def load_bark_model(
         if model_info.model_type in ["text", "coarse"]
         else (FineGPTConfig, FineGPT)
     )
-    conf = ConfigClass(**checkpoint["model_args"])
+
+    model_args = preprocess_model_args(checkpoint["model_args"])
+
+    conf = ConfigClass(**model_args)
     model = ModelClass(conf)
     state_dict = _update_bark_state_dict(model, checkpoint["model"])
     model.load_state_dict(state_dict, strict=False)
@@ -342,6 +345,14 @@ def load_bark_model(
         else None
     )
     return Model(model, conf, preprocessor)
+
+
+def preprocess_model_args(model_args: dict) -> dict:
+    if "input_vocab_size" not in model_args:
+        model_args["input_vocab_size"] = model_args["vocab_size"]
+        model_args["output_vocab_size"] = model_args["vocab_size"]
+        del model_args["vocab_size"]
+    return model_args
 
 
 def _update_bark_state_dict(model: GPT, state_dict: Dict[str, Any]) -> Dict[str, Any]:
