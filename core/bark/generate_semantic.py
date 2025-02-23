@@ -72,7 +72,7 @@ def generate_semantic_tokens_from_text(
         semantic_prompt = np.array([])
     else:
         assert isinstance(
-            semantic_prompt, np.ndarray
+            semantic_prompt, torch.Tensor
         ), f"expecting semantic_prompt of type np.ndarray, received {type(semantic_prompt)}"
 
     # load the GPT style model that generate semantic token from text

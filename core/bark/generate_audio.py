@@ -12,6 +12,7 @@ import torchaudio
 from typing_extensions import List, Tuple, Optional, Union, Sequence
 
 from core.bark.data_types import BarkPrompt
+from core.bark.encodec import decode_fine_tokens_to_audio
 from core.utils import read_audio_file
 from core.gvar import env
 
@@ -61,8 +62,9 @@ def generate_audio(
     )
 
     # coarse token generation
+    # this function is not working with a batch dimension right now, will update it to allow batch inference later
     coarse_tokens = generate_coarse_tokens_from_semantic(
-        semantic_tokens, prompt, **asdict(generation_config)
+        semantic_tokens.squeeze(0), prompt, **asdict(generation_config)
     )
 
     # fine token generation
@@ -74,12 +76,8 @@ def generate_audio(
     )
 
     # decoding the codes
-
-    print(fine_tokens)
-
-    # return the final audio
-
-    return np.ndarray([])
+    audio_wave = decode_fine_tokens_to_audio(fine_tokens)
+    return audio_wave
 
 
 def load_bark_audio_prompt(file_path: str) -> BarkPrompt:

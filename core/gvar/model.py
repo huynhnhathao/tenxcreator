@@ -127,7 +127,7 @@ class TorchModels:
                 self._unload_lru_model()
 
             if model_info.load_model is not None:
-                model = model_info.load_model()
+                model = model_info.load_model(torch.device(env.DEVICE))
             elif model_info.checkpoint_name is not None:
                 model = load_transformers_model(model_info, self._device)
             elif model_info.repo_id is not None and model_info.file_name is not None:

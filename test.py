@@ -3,6 +3,7 @@ from core.bark.generate_coarse import generate_coarse_tokens_from_semantic
 from core.bark.generate_fine import generate_fine_tokens_from_coarse
 from core.bark.data_types import BarkPrompt
 import torch
+import soundfile as sf
 
 from dataclasses import asdict
 
@@ -1986,6 +1987,23 @@ torch.manual_seed(42)
 prompt_path = "/Users/hao/Desktop/ML/bark/bark/assets/prompts/v2/en_speaker_6.npz"
 
 
+def save_audio_file(audio_array, sample_rate, file_path, format="WAV"):
+    """
+    Save an audio array to a file.
+
+    Parameters:
+    - audio_array: numpy array or list containing the audio samples
+    - sample_rate: int, the sample rate of the audio (e.g., 44100 Hz)
+    - file_path: str, path where the file will be saved (e.g., 'output.wav')
+    - format: str, audio file format (e.g., 'WAV', 'FLAC', 'OGG'), default is 'WAV'
+    """
+    try:
+        sf.write(file_path, audio_array, sample_rate, format=format)
+        print(f"Audio saved successfully to {file_path}")
+    except Exception as e:
+        print(f"Error saving audio file: {e}")
+
+
 def test_generate_audio():
     text = " this is a test text"
     semantic_tokens = generate_audio(text, prompt_path)
@@ -2019,14 +2037,13 @@ def test_generate_fine():
     print(fine_tokens)
 
 
+def test_generate_audio():
+    text = "it is night time right now and I am feeling tired but I am trying to get this to work"
+
+    audio = generate_audio(text, prompt_path, generation_config)
+
+    save_audio_file(audio, 24000, "./test_generation.wav")
+
+
 if __name__ == "__main__":
-    test_generate_fine()
-
-
-#       ([[ 121,   62,   62,  ...,   62,   62,   62],
-#         [ 518,  424,  424,  ...,  518,  424,  424],
-#         [ 937,   36,   36,  ...,  290,   36,  678],
-#         ...,
-#         [ 939,  986,  986,  ...,  129,  701,  881],
-#         [ 900, 1002,  570,  ...,  722,  853, 1002],
-#         [ 518,  948,  948,  ...,  499,  899,  975]]
+    test_generate_audio()
