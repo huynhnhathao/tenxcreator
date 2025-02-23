@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
-from typing import Optional, Union, Tuple
+from typing_extensions import Optional, Union, Tuple
 
 from core.bark.constants import *
 from core.bark.model import GPT
