@@ -17,7 +17,7 @@ from core.gvar import torch_models, ModelEnum, env
 num_coarse_per_semantic = (COARSE_RATE_HZ / SEMANTIC_RATE_HZ) * N_COARSE_CODEBOOKS
 
 
-def generate_coarse_tokens(
+def generate_coarse_tokens_from_semantic(
     semantic_tokens: torch.Tensor,
     history_prompt: Union[BarkPrompt, None] = None,
     temperature: float = 0.7,

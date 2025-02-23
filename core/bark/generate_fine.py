@@ -12,7 +12,7 @@ from core.bark import FineGPT
 from core.gvar import ModelEnum, env, torch_models
 
 
-def generate_fine(
+def generate_fine_tokens_from_coarse(
     coarse_tokens: torch.Tensor,
     history_prompt: Union[BarkPrompt, None] = None,
     temperature: float = 0.5,

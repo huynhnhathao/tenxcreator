@@ -1,5 +1,6 @@
 from core.bark import generate_audio, generation_config
-from core.bark.generate_coarse import generate_coarse_tokens
+from core.bark.generate_coarse import generate_coarse_tokens_from_semantic
+from core.bark.generate_fine import generate_fine_tokens_from_coarse
 from core.bark.data_types import BarkPrompt
 import torch
 
@@ -1452,7 +1453,7 @@ def test_generate_coarse():
         torch.tensor([]),
     )
 
-    coarse_tokens = generate_coarse_tokens(
+    coarse_tokens = generate_coarse_tokens_from_semantic(
         semantic[0], history_prompt, **asdict(generation_config)
     )
 
