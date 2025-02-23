@@ -3,6 +3,7 @@ from typing_extensions import Union
 import torch
 import numpy as np
 from tqdm import tqdm
+import torch.nn.functional as F
 
 from core.bark.data_types import BarkPrompt
 from core.bark.constants import *
