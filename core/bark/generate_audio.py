@@ -106,7 +106,9 @@ def load_bark_audio_prompt(file_path: str) -> BarkPrompt:
     ), f"invalid prompt data {prompt}"
 
     return BarkPrompt(
-        prompt["semantic_prompt"], prompt["coarse_prompt"], prompt["fine_prompt"]
+        torch.from_numpy(prompt["semantic_prompt"]),
+        torch.from_numpy(prompt["coarse_prompt"]),
+        torch.from_numpy(prompt["fine_prompt"]),
     )
 
 

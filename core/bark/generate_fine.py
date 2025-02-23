@@ -61,7 +61,7 @@ def generate_fine_tokens_from_coarse(
     # e.g original coarse_token shape (2, T), after vstack shape: (8, T) where codebook size = 8
     input_tensor = torch.vstack(
         (
-            coarse_tokens,
+            coarse_tokens.to(device),
             torch.full(
                 (N_FINE_CODEBOOKS - n_coarse, sequence_length),
                 CODEBOOK_SIZE,
