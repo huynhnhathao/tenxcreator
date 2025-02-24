@@ -115,8 +115,7 @@ def generate_semantic_tokens_from_text(
     # create a new axis to the tensor by indexing [None]
     input_tensor = torch.hstack(
         [encoded_text, semantic_prompt, torch.tensor([SEMANTIC_INFER_TOKEN])]
-    ).to(torch.int64)
-    [None]
+    ).to(torch.int64)[None]
 
     assert (
         input_tensor.shape[1] == 256 + 256 + 1

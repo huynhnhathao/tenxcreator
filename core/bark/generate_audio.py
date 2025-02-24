@@ -112,14 +112,3 @@ def load_bark_audio_prompt(file_path: str) -> BarkPrompt:
         torch.from_numpy(prompt["coarse_prompt"]),
         torch.from_numpy(prompt["fine_prompt"]),
     )
-
-
-def create_prompt_from_audio(
-    audio_file_path: str, max_duration: int, sample_rate: int, save_prompt: bool = True
-) -> BarkPrompt:
-    """
-    To create a prompt from an audio file, we need to forward the text transcript and the
-    audio samples of the prompt through the 3 models of Bark to get 3 arrays: semantic, coarse and fine
-    """
-    wav, sr = torchaudio.load(audio_file_path)
-    pass

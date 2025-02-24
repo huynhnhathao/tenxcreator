@@ -5,7 +5,7 @@ from typing_extensions import Optional, Union, List
 
 import torch
 
-from core.api.types import *
+from core.api.models import *
 from core.gvar.model import TorchModels
 from core.bark.generate_audio import (
     generate_audio as bark_generate_audio,
@@ -24,7 +24,8 @@ _t2a_dispatcher = {TextToAudioModel.BARK: bark_generate_audio}
 
 def create_bark_prompt(audio_prompt: RawAudioPrompt) -> BarkPrompt:
     """
-    Turn raw audio into valid BARK prompt
+    Turn raw audio into valid BARK prompt. When given a raw audio file, use this function
+    to generate a valid BARK prompt
     """
 
     # validate data
@@ -82,3 +83,26 @@ def text_to_audio(
         file_name = "_".join(text.split(" ")[:-5])
         file_path = os.path.join(save_path, file_name)
         save_audio_file(audio, sample_rate, file_path)
+
+
+def text_to_audio(input_data: TextToAudioInput) -> List[np.ndarray]:
+    """
+    Generate audio from text using an optional audio prompt.
+
+    Args:
+        input_data (TextToAudioInput): Validated input data containing texts, optional prompt, and settings.
+
+    Returns:
+        List[np.ndarray]: List of generated audio arrays.
+
+    Notes:
+        This is a placeholder implementation. Replace with actual audio generation logic (e.g., Bark or another model).
+    """
+    # Simulate audio generation based on input texts
+    audio_arrays = []
+    for text in input_data.texts:
+        # Placeholder: Generate random audio array (replace with real implementation)
+        audio_array = np.random.rand(input_data.sample_rate * 5)  # 5 seconds of audio
+        audio_arrays.append(audio_array)
+
+    return audio_arrays

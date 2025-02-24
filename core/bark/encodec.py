@@ -10,6 +10,7 @@ from core.bark.custom_context import inference_mode
 
 def encodec_decode_fine_tokens_to_audio(fine_tokens: torch.Tensor) -> np.ndarray:
     """
+    expecting fine_tokens shape [codebook_size, timestep], concretely [8, 75*duration_in_sec]
     Decode the given fine_tokens using the Encodec's decoder
     Returns the audio sample array as an np.ndarray
     """

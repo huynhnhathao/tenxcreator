@@ -1,4 +1,8 @@
-from core.bark import generate_audio, generation_config, load_bark_audio_prompt
+from core.bark import (
+    generate_audio,
+    default_generation_config as generation_config,
+    load_bark_audio_prompt,
+)
 from core.bark.generate_coarse import generate_coarse_tokens_from_semantic
 from core.bark.generate_fine import generate_fine_tokens_from_coarse
 from core.types.bark import BarkPrompt
@@ -6,6 +10,9 @@ import torch
 import soundfile as sf
 
 from dataclasses import asdict
+
+from core.api import create_bark_prompt, RawAudioPrompt
+
 
 semantic_tokens = [
     [
@@ -2039,14 +2046,22 @@ def test_generate_fine():
 
 def test_generate_audio():
     text = "it's near lunchtime now and I feel pretty numb in my brain again"
+    # prompt = load_bark_audio_prompt(prompt_path)
+    audio = generate_audio(text, None, generation_config)
 
-    audio = generate_audio(text, prompt_path, generation_config)
+    save_audio_file(audio, 24000, "./artifact/test_generation_1.wav")
 
-    save_audio_file(audio, 24000, "./test_generation_1.wav")
+
+def test_create_bark_prompt():
+    raw_prompt = RawAudioPrompt("", "", 24000, 1, 10)
+    prompt = create_bark_prompt(raw_prompt)
+    print(prompt)
 
 
 # test encodec_encode_audio
 
+
+# test text_to_audio
 
 if __name__ == "__main__":
     test_generate_audio()
