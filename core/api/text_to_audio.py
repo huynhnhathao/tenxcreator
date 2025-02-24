@@ -58,7 +58,6 @@ def text_to_audio(
     texts: list[str],
     audio_prompt: Union[RawAudioPrompt, str, None] = None,
     sample_rate: int = 24000,
-    device: Optional[torch.device] = None,
     save_path: str = "./artifact",
 ) -> List[np.ndarray]:
     """
@@ -81,7 +80,8 @@ def text_to_audio(
             )
         )
     elif isinstance(audio_prompt, str):
-        prompt = load_bark_audio_prompt(audio_prompt)
+        prompt = BarkPrompt()
+        prompt.load_prompt(audio_prompt, torch.device(env.DEVICE))
 
     results = []
     for text in texts:
@@ -89,29 +89,38 @@ def text_to_audio(
         results.append(audio)
 
     for text, audio in zip(texts, results):
-        file_name = "_".join(text.split(" ")[:-5])
+        file_name = _create_file_name_from_transcript(text)
         file_path = os.path.join(save_path, file_name)
         save_audio_file(audio, sample_rate, file_path)
 
 
-def text_to_audio(input_data: TextToAudioInput) -> List[np.ndarray]:
-    """
-    Generate audio from text using an optional audio prompt.
+def _create_file_name_from_transcript(transcript: str) -> str:
+    """select the first 5 words (or less if transcript has less words) to be the name of the audio file"""
+    num_word = 5
+    split = transcript.split(" ")
+    if len(split) > num_word:
+        num_word = len(split)
+    return "_".join(split[:num_word])
 
-    Args:
-        input_data (TextToAudioInput): Validated input data containing texts, optional prompt, and settings.
 
-    Returns:
-        List[np.ndarray]: List of generated audio arrays.
+# def text_to_audio(input_data: TextToAudioInput) -> List[np.ndarray]:
+#     """
+#     Generate audio from text using an optional audio prompt.
 
-    Notes:
-        This is a placeholder implementation. Replace with actual audio generation logic (e.g., Bark or another model).
-    """
-    # Simulate audio generation based on input texts
-    audio_arrays = []
-    for text in input_data.texts:
-        # Placeholder: Generate random audio array (replace with real implementation)
-        audio_array = np.random.rand(input_data.sample_rate * 5)  # 5 seconds of audio
-        audio_arrays.append(audio_array)
+#     Args:
+#         input_data (TextToAudioInput): Validated input data containing texts, optional prompt, and settings.
 
-    return audio_arrays
+#     Returns:
+#         List[np.ndarray]: List of generated audio arrays.
+
+#     Notes:
+#         This is a placeholder implementation. Replace with actual audio generation logic (e.g., Bark or another model).
+#     """
+#     # Simulate audio generation based on input texts
+#     audio_arrays = []
+#     for text in input_data.texts:
+#         # Placeholder: Generate random audio array (replace with real implementation)
+#         audio_array = np.random.rand(input_data.sample_rate * 5)  # 5 seconds of audio
+#         audio_arrays.append(audio_array)
+
+#     return audio_arrays
