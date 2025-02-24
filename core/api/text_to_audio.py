@@ -1,38 +1,81 @@
+import os
 import numpy as np
 
-from typing_extensions import Optional
+from typing_extensions import Optional, Union, List
 
 import torch
 
 from core.api.types import *
+from core.gvar.model import TorchModels
+from core.bark.generate_audio import generate_audio as bark_generate_audio
+from core.types.bark import BarkPrompt
+from core.utils import normalize_whitespace, save_audio_file, read_audio_file
+from core.bark import generate_semantic_tokens_from_text, encodec_encode_audio
 
 """
 Convenient functions to generate text to audio
 """
 
+_t2a_dispatcher = {TextToAudioModel.BARK: bark_generate_audio}
 
-# reference the bark model from gvar.models.torch_models, then use it to do forward pass
-def preprocess_audio_prompt(audio: np.ndarray) -> np.ndarray:
-    """
-    Given the audio numpy array, preprocess it to match the expected audio prompt for BARK
 
+def create_bark_prompt(audio_prompt: RawAudioPrompt) -> BarkPrompt:
     """
-    pass
+    Turn raw audio into valid BARK prompt
+    """
+
+    # validate data
+    transcript = normalize_whitespace(audio_prompt.transcript)
+    assert len(transcript) > 0, "invalid transcript"
+    # read the audio
+    raw_audio = read_audio_file(
+        audio_prompt.audio_file_path,
+        audio_prompt.sample_rate,
+        audio_prompt.channels,
+        max_duration=audio_prompt.max_duration,
+    )
+
+    # a 1D tensor contains generated semantic tokens from the transcript
+    semantic_tokens = generate_semantic_tokens_from_text(transcript)
+
+    # generate codebook tokens using encodec
+    # assuming 24khz sample rate, will get back later if needed for 48khz
+    codes = encodec_encode_audio(torch.from_numpy(raw_audio), audio_prompt.sample_rate)
+
+    return BarkPrompt(semantic_tokens, codes[:2, :], codes)
 
 
 # for now we will loop over each text to generate audio, later should support batch inference
 def text_to_audio(
     texts: list[str],
-    prompt: Optional[np.ndarray],
-    device: torch.device,
-    model: T2AModel,
-) -> np.ndarray:
+    audio_prompt: Union[RawAudioPrompt, str, None] = None,
+    sample_rate: int = 24000,
+    device: Optional[torch.device] = None,
+    save_path: str = "./artifact",
+) -> List[np.ndarray]:
     """
-    Given the preprocessed audio, use the bark model to generate the final audio
+    Generate audio using a raw audio file as prompt
+
+    Args:
+        - texts: texts to generate audio
+        - audio_prompt: can be path to the raw audio file or path to the processed prompt for bark
+        - device: device to run inference
+        - save_path: path to save the final audio results
     """
 
-    # get 3 models from gvar
-    # preprocess the input texts to the format that the first model expected
-    # forward the text through 3 models and return the final audio wave as a np.ndarray
+    # if the prompt given is a raw audio file, need to turn it into valid prompt
+    # and save it for later reference
+    if isinstance(audio_prompt, RawAudioPrompt):
+        prompt = create_bark_prompt(audio_prompt)
+        # save the prompt
+    # if the prompt given is a .npz file, assume it is a processed prompt and do no further processing
+    prompt_file_path = audio_prompt
+    results = []
+    for text in texts:
+        audio = bark_generate_audio(text, prompt_file_path)
+        results.append(audio)
 
-    pass
+    for text, audio in zip(texts, results):
+        file_name = "_".join(text.split(" ")[:-5])
+        file_path = os.path.join(save_path, file_name)
+        save_audio_file(audio, sample_rate, file_path)

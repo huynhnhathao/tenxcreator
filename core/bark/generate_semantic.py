@@ -14,11 +14,12 @@ from core.bark.custom_context import inference_mode
 from core.bark.utils import _clear_cuda_cache
 from core.model import GPT
 from core.bark.constants import *
+from core.types.bark import BarkPrompt
 
 
 def generate_semantic_tokens_from_text(
     text: str,
-    semantic_prompt: Union[np.ndarray, None] = None,
+    semantic_prompt: Union[torch.Tensor, None] = None,
     temperature: float = 0.7,
     top_k: Union[int, None] = None,
     top_p: Union[int, None] = None,
@@ -38,7 +39,7 @@ def generate_semantic_tokens_from_text(
 
     Args:
         text (str): Input text to generate semantic tokens for. Must be non-empty.
-        semantic_prompt (Union[np.ndarray, None]): Optional array of semantic tokens to use as prompt.
+        semantic_prompt (Union[torch.Tensor, None]): Optional array of semantic tokens to use as prompt.
             If provided, these tokens will be concatenated with the generated tokens.
         temperature (float): Sampling temperature for token generation. Higher values produce more random outputs.
             Defaults to 0.7.
@@ -69,11 +70,11 @@ def generate_semantic_tokens_from_text(
     assert len(text) > 0, f"invalid input text {text}"
 
     if semantic_prompt is None:
-        semantic_prompt = np.array([])
+        semantic_prompt = torch.tensor([])
     else:
         assert isinstance(
             semantic_prompt, torch.Tensor
-        ), f"expecting semantic_prompt of type np.ndarray, received {type(semantic_prompt)}"
+        ), f"expecting semantic_prompt of type torch.Tensor, received {type(semantic_prompt)}"
 
     # load the GPT style model that generate semantic token from text
     # and the BERT tokenizer to memory
@@ -112,11 +113,10 @@ def generate_semantic_tokens_from_text(
 
     # final input is the concatenation of the input encoded text and the semantic tokens array
     # create a new axis to the tensor by indexing [None]
-    input_tensor = torch.from_numpy(
-        np.hstack(
-            [encoded_text, semantic_prompt, np.array([SEMANTIC_INFER_TOKEN])]
-        ).astype(np.int64)
-    )[None]
+    input_tensor = torch.hstack(
+        [encoded_text, semantic_prompt, torch.tensor([SEMANTIC_INFER_TOKEN])]
+    ).to(torch.int64)
+    [None]
 
     assert (
         input_tensor.shape[1] == 256 + 256 + 1
@@ -349,16 +349,46 @@ def _preprocess_texts(text: str) -> str:
 # (from the original implementation) the tokenized text array length must be 256
 # trim or pad the array to get that length
 # array is expected to be 1D
-def trim_or_pad_array(
-    array: np.ndarray, pad_token: int, max_length: int = 256
-) -> np.ndarray:
-    if len(array) > max_length:
-        return array[-max_length:]
+# def trim_or_pad_array(
+#     array: np.ndarray, pad_token: int, max_length: int = 256
+# ) -> np.ndarray:
+#     if len(array) > max_length:
+#         return array[-max_length:]
 
-    array = np.pad(
-        array,
-        (0, max_length - len(array)),
-        constant_values=pad_token,
-        mode="constant",
-    )
-    return array
+#     array = np.pad(
+#         array,
+#         (0, max_length - len(array)),
+#         constant_values=pad_token,
+#         mode="constant",
+#     )
+#     return array
+
+
+def trim_or_pad_array(
+    array: Union[np.ndarray, torch.Tensor], pad_token: int, max_length: int = 256
+) -> torch.Tensor:
+    # Convert np.ndarray to torch.Tensor if necessary
+    if isinstance(array, np.ndarray):
+        tensor = torch.from_numpy(array)
+    else:  # Already a torch.Tensor
+        tensor = array
+
+    # Get the current length
+    current_length = tensor.shape[0]
+
+    if current_length > max_length:
+        # Trim from the end (last max_length elements)
+        return tensor[-max_length:]
+
+    elif current_length < max_length:
+        # Pad with pad_token
+        padding = (
+            0,
+            max_length - current_length,
+        )  # Left pad 0, right pad to max_length
+        return torch.nn.functional.pad(
+            tensor, padding, mode="constant", value=pad_token
+        )
+
+    # If length equals max_length, just return as is
+    return tensor

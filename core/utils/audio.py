@@ -68,3 +68,20 @@ def read_audio_file(
 
     except Exception as e:
         raise RuntimeError(f"Failed to process audio file {path}: {str(e)}")
+
+
+def save_audio_file(audio_array, sample_rate, file_path, format="WAV"):
+    """
+    Save an audio array to a file.
+
+    Parameters:
+    - audio_array: numpy array or list containing the audio samples
+    - sample_rate: int, the sample rate of the audio (e.g., 44100 Hz)
+    - file_path: str, path where the file will be saved (e.g., 'output.wav')
+    - format: str, audio file format (e.g., 'WAV', 'FLAC', 'OGG'), default is 'WAV'
+    """
+    try:
+        sf.write(file_path, audio_array, sample_rate, format=format)
+        print(f"Audio saved successfully to {file_path}")
+    except Exception as e:
+        print(f"Error saving audio file: {e}")

@@ -9,10 +9,10 @@ import numpy as np
 import torch
 import torchaudio
 
-from typing_extensions import List, Tuple, Optional, Union, Sequence
+from typing_extensions import Union
 
-from core.bark.types import BarkPrompt
-from core.bark.encodec import decode_fine_tokens_to_audio
+from core.types.bark import BarkPrompt
+from core.bark.encodec import encodec_decode_fine_tokens_to_audio
 from core.utils import read_audio_file
 from core.gvar import env
 
@@ -38,13 +38,13 @@ class GenerateAudioConfig:
     generate_fine_temperature: float = 0.5
 
 
-generation_config = GenerateAudioConfig()
+default_generation_config = GenerateAudioConfig()
 
 
 def generate_audio(
     text: str,
-    prompt_file_path: Union[str, None] = None,
-    generation_config: GenerateAudioConfig = generation_config,
+    prompt: Union[str, BarkPrompt, None] = None,
+    generation_config: GenerateAudioConfig = default_generation_config,
 ) -> np.ndarray:
     """
     Generate audio from text with an optional audio prompt
@@ -54,11 +54,17 @@ def generate_audio(
         generation_config: configurations to generate audio
 
     """
+    if isinstance(prompt, str):
+        bark_prompt = load_bark_audio_prompt(prompt)
+    elif isinstance(prompt, BarkPrompt):
+        bark_prompt = prompt
+    else:
+        bark_prompt = None
 
-    prompt = load_bark_audio_prompt(prompt_file_path)
+    semantic_prompt = bark_prompt.semantic_prompt if bark_prompt is not None else None
 
     semantic_tokens = generate_semantic_tokens_from_text(
-        text, prompt.semantic_prompt, **asdict(generation_config)
+        text, semantic_prompt, **asdict(generation_config)
     )
 
     # coarse token generation
@@ -70,13 +76,13 @@ def generate_audio(
     # fine token generation
     fine_tokens = generate_fine_tokens_from_coarse(
         coarse_tokens,
-        prompt,
+        bark_prompt,
         generation_config.generate_fine_temperature,
         generation_config.silent,
     )
 
     # decoding the codes
-    audio_wave = decode_fine_tokens_to_audio(fine_tokens)
+    audio_wave = encodec_decode_fine_tokens_to_audio(fine_tokens)
     return audio_wave
 
 
