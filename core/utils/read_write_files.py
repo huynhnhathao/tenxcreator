@@ -5,25 +5,21 @@ from typing_extensions import Dict
 
 
 def save_dict_to_msgpack(dictionary: Dict, file_path: str) -> bool:
-    """
-    Save a dictionary to a file using MessagePack format.
-
-    Args:
-        dictionary (dict): The dictionary to be saved
-        file_path (str): The full path where the file should be saved
-
-    Returns:
-        bool: True if successful, False if an error occurred
-    """
     try:
         # Ensure the directory exists
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        directory = os.path.dirname(file_path)
+        if directory:  # If there's a directory component
+            os.makedirs(directory, exist_ok=True)
 
         # Open file in binary write mode and save the dictionary using msgpack
         with open(file_path, "wb") as f:
             msgpack.pack(dictionary, f)
 
-        return True
+        # Verify the file exists
+        if os.path.exists(file_path):
+            return True
+        else:
+            return False
 
     except Exception as e:
         print(f"Error saving dictionary to msgpack: {str(e)}")

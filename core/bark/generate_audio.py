@@ -69,7 +69,7 @@ def generate_audio(
     # fine token generation
     fine_tokens = generate_fine_tokens_from_coarse(
         coarse_tokens,
-        semantic_prompt,
+        prompt,
         generation_config.generate_fine_temperature,
         generation_config.silent,
     )

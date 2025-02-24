@@ -38,7 +38,7 @@ def generate_semantic_tokens_from_text(
 
     Args:
         text (str): Input text to generate semantic tokens for. Must be non-empty.
-        semantic_prompt (Union[torch.Tensor, None]): Optional array of semantic tokens to use as prompt.
+        semantic_prompt (Union[torch.Tensor, None]): Optional 1D array of semantic tokens to use as prompt.
             If provided, these tokens will be concatenated with the generated tokens.
         temperature (float): Sampling temperature for token generation. Higher values produce more random outputs.
             Defaults to 0.7.
@@ -74,7 +74,7 @@ def generate_semantic_tokens_from_text(
         assert isinstance(
             semantic_prompt, torch.Tensor
         ), f"expecting semantic_prompt of type torch.Tensor, received {type(semantic_prompt)}"
-
+        assert semantic_prompt.dim() == 1, "expect 1D tensor as semantic_prompt"
     # load the GPT style model that generate semantic token from text
     # and the BERT tokenizer to memory
     text_model_info = (

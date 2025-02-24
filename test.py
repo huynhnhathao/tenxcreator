@@ -11,7 +11,7 @@ import soundfile as sf
 
 from dataclasses import asdict
 
-from core.api import create_bark_prompt, RawAudioPrompt
+from core.api import create_bark_prompt, RawAudioPrompt, text_to_audio
 
 
 semantic_tokens = [
@@ -2061,7 +2061,23 @@ def test_create_bark_prompt():
         max_duration=15,
     )
     prompt = create_bark_prompt(raw_prompt)
-    print(prompt)
+    return prompt
+
+
+def test_text_to_audio():
+    text = "This will be the final test of our effort for the last week [laugh]"
+    raw_prompt = RawAudioPrompt(
+        transcript="The Earth is not for the pleasure of man but a place of destruction to his soul",
+        audio_file_path="/Users/hao/Desktop/studio/tenxcreator/artifact/raw_prompt_audio.wav",
+        sample_rate=24000,
+        channels=1,
+        max_duration=15,
+    )
+    # raw_prompt = "/Users/hao/.cache/tenxcreator/bark/prompts/the_earth_is_not.msgpack"
+    res = text_to_audio(
+        [text],
+        raw_prompt,
+    )
 
 
 # test encodec_encode_audio
@@ -2070,5 +2086,4 @@ def test_create_bark_prompt():
 # test text_to_audio
 
 if __name__ == "__main__":
-    prompt = load_bark_audio_prompt(prompt_path)
-    print(prompt)
+    test_text_to_audio()

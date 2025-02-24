@@ -50,7 +50,7 @@ def create_bark_prompt(audio_prompt: RawAudioPrompt) -> BarkPrompt:
         torch.from_numpy(raw_audio[None]), audio_prompt.sample_rate
     )
 
-    return BarkPrompt(semantic_tokens, codes[:2, :], codes)
+    return BarkPrompt(semantic_tokens[0], codes[:2, :], codes)
 
 
 # for now we will loop over each text to generate audio, later should support batch inference
@@ -76,12 +76,12 @@ def text_to_audio(
         prompt = create_bark_prompt(audio_prompt)
         prompt.save_prompt(
             os.path.join(
-                _bark_prompt_path, audio_prompt.get_default_prompt_name(), ".msgpack"
+                _bark_prompt_path,
+                audio_prompt.get_default_prompt_name(),
             )
         )
     elif isinstance(audio_prompt, str):
-        prompt = BarkPrompt()
-        prompt.load_prompt(audio_prompt, torch.device(env.DEVICE))
+        prompt = BarkPrompt.load_prompt(audio_prompt, torch.device(env.DEVICE))
 
     results = []
     for text in texts:
@@ -92,6 +92,8 @@ def text_to_audio(
         file_name = _create_file_name_from_transcript(text)
         file_path = os.path.join(save_path, file_name)
         save_audio_file(audio, sample_rate, file_path)
+
+    return results
 
 
 def _create_file_name_from_transcript(transcript: str) -> str:
