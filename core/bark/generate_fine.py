@@ -5,7 +5,7 @@ import numpy as np
 from tqdm import tqdm
 import torch.nn.functional as F
 
-from core.bark.data_types import BarkPrompt
+from core.bark.types import BarkPrompt
 from core.bark.constants import *
 from core.bark.custom_context import inference_mode
 from core.bark import FineGPT

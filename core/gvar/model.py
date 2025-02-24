@@ -26,7 +26,7 @@ from encodec import EncodecModel
 
 from core.gvar.common import get_cached_or_download_model_from_hf, clear_cuda_cache, env
 from core.bark.model import GPTConfig, FineGPTConfig, GPT, FineGPT
-from core.gvar.data_types import *
+from core.gvar.types import *
 
 # Configure logging for this module
 logger = logging.getLogger(__name__)

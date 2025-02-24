@@ -1,7 +1,7 @@
 from core.bark import generate_audio, generation_config, load_bark_audio_prompt
 from core.bark.generate_coarse import generate_coarse_tokens_from_semantic
 from core.bark.generate_fine import generate_fine_tokens_from_coarse
-from core.bark.data_types import BarkPrompt
+from core.bark.types import BarkPrompt
 import torch
 import soundfile as sf
 

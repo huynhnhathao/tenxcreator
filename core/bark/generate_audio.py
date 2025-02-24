@@ -11,7 +11,7 @@ import torchaudio
 
 from typing_extensions import List, Tuple, Optional, Union, Sequence
 
-from core.bark.data_types import BarkPrompt
+from core.bark.types import BarkPrompt
 from core.bark.encodec import decode_fine_tokens_to_audio
 from core.utils import read_audio_file
 from core.gvar import env
