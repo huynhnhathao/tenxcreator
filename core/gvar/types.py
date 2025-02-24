@@ -6,7 +6,7 @@ from encodec import EncodecModel
 
 import torch
 
-from core.bark.model import GPT
+from core.model.bark import GPT
 from core.gvar.common import clear_cuda_cache
 
 # Memory threshold (in percentage) to trigger unloading of models when memory usage gets too high

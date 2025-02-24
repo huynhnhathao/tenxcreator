@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from core.types.bark import BarkPrompt
 from core.bark.constants import *
 from core.bark.custom_context import inference_mode
-from core.bark import FineGPT
+from core.model import FineGPT
 from core.gvar import ModelEnum, env, torch_models
 
 

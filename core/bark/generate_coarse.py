@@ -5,7 +5,7 @@ from tqdm import tqdm
 from typing_extensions import Optional, Union, Tuple
 
 from core.bark.constants import *
-from core.bark.model import GPT
+from core.model.bark import GPT
 from core.types.bark import BarkPrompt
 from core.bark.custom_context import inference_mode
 from core.bark.utils import _clear_cuda_cache

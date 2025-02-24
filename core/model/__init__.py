@@ -1,1 +1,1 @@
-from core.bark.model import *
+from core.model.bark import *

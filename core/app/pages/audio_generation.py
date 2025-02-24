@@ -9,7 +9,6 @@ from dash import html, dcc, callback, Input, Output, State, MATCH, ALL
 from core.api import text_to_audio
 from core.api.models import TextToAudioInput, RawAudioPrompt
 
-# Register this page with Dash
 dash.register_page(__name__, path="/audio-generation")
 
 # Directory paths
@@ -261,7 +260,11 @@ def get_audio_list():
 
 
 # Callback to update audio list
-@callback(Output("audio-list", "children"), Input("audio-list-interval", "n_intervals"))
+@callback(
+    Output("audio-list", "children"),
+    Input("audio-list-interval", "n_intervals"),
+    allow_duplicate=True,
+)
 def update_audio_list(n):
     """Update the displayed list of generated audio files."""
     return get_audio_list()
@@ -269,9 +272,14 @@ def update_audio_list(n):
 
 # Callback to handle audio deletion
 @callback(
-    Output("audio-list", "children"),
+    Output(
+        "audio-list",
+        "children",
+        allow_duplicate=True,
+    ),
     Input({"type": "delete-button", "index": ALL}, "n_clicks"),
     State({"type": "delete-button", "index": ALL}, "id"),
+    prevent_initial_call=True,
 )
 def delete_audio(n_clicks, ids):
     """Delete an audio file when the delete button is clicked."""
@@ -284,10 +292,15 @@ def delete_audio(n_clicks, ids):
 
 # Callback to handle audio renaming
 @callback(
-    Output("audio-list", "children"),
+    Output(
+        "audio-list",
+        "children",
+        allow_duplicate=True,
+    ),
     Input({"type": "rename-button", "index": ALL}, "n_clicks"),
     State({"type": "rename-input", "index": ALL}, "value"),
     State({"type": "rename-button", "index": ALL}, "id"),
+    prevent_initial_call=True,
 )
 def rename_audio(n_clicks, new_names, ids):
     """Rename an audio file when the rename button is clicked."""

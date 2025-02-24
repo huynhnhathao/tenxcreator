@@ -12,9 +12,8 @@ from typing_extensions import List, Tuple, Optional, Union, Sequence
 from core.gvar import torch_models, ModelEnum, env
 from core.bark.custom_context import inference_mode
 from core.bark.utils import _clear_cuda_cache
-from core.model import GPT
 from core.bark.constants import *
-from core.types.bark import BarkPrompt
+from core.model import GPT
 
 
 def generate_semantic_tokens_from_text(
