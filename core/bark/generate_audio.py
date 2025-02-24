@@ -43,7 +43,7 @@ default_generation_config = GenerateAudioConfig()
 
 def generate_audio(
     text: str,
-    prompt: Union[str, BarkPrompt, None] = None,
+    prompt: Union[BarkPrompt, None] = None,
     generation_config: GenerateAudioConfig = default_generation_config,
 ) -> np.ndarray:
     """
@@ -54,9 +54,7 @@ def generate_audio(
         generation_config: configurations to generate audio
 
     """
-    if isinstance(prompt, str):
-        bark_prompt = load_bark_audio_prompt(prompt)
-    elif isinstance(prompt, BarkPrompt):
+    if isinstance(prompt, BarkPrompt):
         bark_prompt = prompt
     else:
         bark_prompt = None

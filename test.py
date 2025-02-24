@@ -2038,11 +2038,14 @@ def test_generate_fine():
 
 
 def test_generate_audio():
-    text = "it is night time right now and I am feeling tired but I am trying to get this to work"
+    text = "it's near lunchtime now and I feel pretty numb in my brain again"
 
     audio = generate_audio(text, prompt_path, generation_config)
 
-    save_audio_file(audio, 24000, "./test_generation.wav")
+    save_audio_file(audio, 24000, "./test_generation_1.wav")
+
+
+# test encodec_encode_audio
 
 
 if __name__ == "__main__":

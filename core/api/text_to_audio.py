@@ -7,7 +7,10 @@ import torch
 
 from core.api.types import *
 from core.gvar.model import TorchModels
-from core.bark.generate_audio import generate_audio as bark_generate_audio
+from core.bark.generate_audio import (
+    generate_audio as bark_generate_audio,
+    load_bark_audio_prompt,
+)
 from core.types.bark import BarkPrompt
 from core.utils import normalize_whitespace, save_audio_file, read_audio_file
 from core.bark import generate_semantic_tokens_from_text, encodec_encode_audio
@@ -67,12 +70,12 @@ def text_to_audio(
     # and save it for later reference
     if isinstance(audio_prompt, RawAudioPrompt):
         prompt = create_bark_prompt(audio_prompt)
-        # save the prompt
-    # if the prompt given is a .npz file, assume it is a processed prompt and do no further processing
-    prompt_file_path = audio_prompt
+    elif isinstance(audio_prompt, str):
+        prompt = load_bark_audio_prompt(audio_prompt)
+
     results = []
     for text in texts:
-        audio = bark_generate_audio(text, prompt_file_path)
+        audio = bark_generate_audio(text, prompt)
         results.append(audio)
 
     for text, audio in zip(texts, results):
