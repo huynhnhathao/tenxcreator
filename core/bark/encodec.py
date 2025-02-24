@@ -34,20 +34,24 @@ def encodec_decode_fine_tokens_to_audio(fine_tokens: torch.Tensor) -> np.ndarray
 
 
 def encodec_encode_audio(
-    audio_sample: torch.Tensor,
-    audio_sample_rate: int,
+    audio_sample: torch.Tensor, audio_sample_rate: int
 ) -> torch.Tensor:
     """
     Encode the given audio sample using the encodec model
-    Returns codes as a tensor shape [n_q, T] where n_q typically is 8 and T is the compressed time step dimension (75 per second for 24khz model)
+    audio_sample expected shape: (channels, sample)
+
+    Returns codes as a tensor shape [n_q, T]
+        where n_q typically is 8 and T is the compressed time step dimension (75 per second for 24khz model)
     """
     model_wrapper = torch_models.get_model(ModelEnum.ENCODEC24k.value)
     model: EncodecModel = model_wrapper.model
 
+    device = next(model.parameters()).device
+
     wav = convert_audio(
         audio_sample, audio_sample_rate, model.sample_rate, model.channels
     )
-    wav = wav.unsqueeze(0)
+    wav = wav.unsqueeze(0).float().to(device)
 
     # Extract discrete codes from EnCodec
     with inference_mode():

@@ -20,6 +20,15 @@ class RawAudioPrompt(BaseModel):
         ..., ge=1, description="Maximum duration of the audio in seconds"
     )
 
+    def get_default_prompt_name(self) -> str:
+        num_word_in_name = 5
+        words = self.transcript.split(" ")
+        if len(words) > num_word_in_name:
+            num_word_in_name = len(words)
+        name = "_".join(words[:num_word_in_name])
+
+        return name
+
 
 class TextToAudioInput(BaseModel):
     """Model for validating inputs to the text-to-audio generation function."""

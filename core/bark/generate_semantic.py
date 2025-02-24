@@ -365,6 +365,9 @@ def _preprocess_texts(text: str) -> str:
 def trim_or_pad_array(
     array: Union[np.ndarray, torch.Tensor], pad_token: int, max_length: int = 256
 ) -> torch.Tensor:
+    """
+    Trim on the left (keep the right most tokens), pad on the right
+    """
     # Convert np.ndarray to torch.Tensor if necessary
     if isinstance(array, np.ndarray):
         tensor = torch.from_numpy(array)
@@ -379,11 +382,8 @@ def trim_or_pad_array(
         return tensor[-max_length:]
 
     elif current_length < max_length:
-        # Pad with pad_token
-        padding = (
-            0,
-            max_length - current_length,
-        )  # Left pad 0, right pad to max_length
+        # Left pad 0, right pad to max_length
+        padding = (0, max_length - current_length)
         return torch.nn.functional.pad(
             tensor, padding, mode="constant", value=pad_token
         )

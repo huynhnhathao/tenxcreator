@@ -54,12 +54,7 @@ def generate_audio(
         generation_config: configurations to generate audio
 
     """
-    if isinstance(prompt, BarkPrompt):
-        bark_prompt = prompt
-    else:
-        bark_prompt = None
-
-    semantic_prompt = bark_prompt.semantic_prompt if bark_prompt is not None else None
+    semantic_prompt = prompt.semantic_prompt if prompt is not None else None
 
     semantic_tokens = generate_semantic_tokens_from_text(
         text, semantic_prompt, **asdict(generation_config)
@@ -74,7 +69,7 @@ def generate_audio(
     # fine token generation
     fine_tokens = generate_fine_tokens_from_coarse(
         coarse_tokens,
-        bark_prompt,
+        semantic_prompt,
         generation_config.generate_fine_temperature,
         generation_config.silent,
     )

@@ -26,6 +26,8 @@ def generate_fine_tokens_from_coarse(
     prompt. The process involves sliding a context window over the sequence, predicting 512
     timesteps at a time based on a 1024-timestep input.
 
+    Prompt tokens are trim on the left (keep the right most tokens)
+
     Args:
         coarse_tokens (torch.Tensor): Coarse audio codes with shape (n_coarse, sequence_length),
             where n_coarse <= N_FINE_CODEBOOKS - 1 and values are in [0, CODEBOOK_SIZE - 1].

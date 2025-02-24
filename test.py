@@ -1991,7 +1991,7 @@ coarse_tokens = [
 
 torch.manual_seed(42)
 
-prompt_path = "/Users/hao/Desktop/ML/bark/bark/assets/prompts/v2/en_speaker_6.npz"
+prompt_path = "/Users/hao/Desktop/ML/bark/bark/assets/prompts/v2/en_speaker_5.npz"
 
 
 def save_audio_file(audio_array, sample_rate, file_path, format="WAV"):
@@ -2045,15 +2045,21 @@ def test_generate_fine():
 
 
 def test_generate_audio():
-    text = "it's near lunchtime now and I feel pretty numb in my brain again"
+    text = "I am testing this new text to audio model [laugh] it is pretty promising so far [haha]"
     # prompt = load_bark_audio_prompt(prompt_path)
     audio = generate_audio(text, None, generation_config)
 
-    save_audio_file(audio, 24000, "./artifact/test_generation_1.wav")
+    save_audio_file(audio, 24000, "./artifact/test_generation_2.wav")
 
 
 def test_create_bark_prompt():
-    raw_prompt = RawAudioPrompt("", "", 24000, 1, 10)
+    raw_prompt = RawAudioPrompt(
+        transcript="The Earth is not for the pleasure of man but a place of destruction to his soul",
+        audio_file_path="/Users/hao/Desktop/studio/tenxcreator/artifact/raw_prompt_audio.wav",
+        sample_rate=24000,
+        channels=1,
+        max_duration=15,
+    )
     prompt = create_bark_prompt(raw_prompt)
     print(prompt)
 
@@ -2064,4 +2070,5 @@ def test_create_bark_prompt():
 # test text_to_audio
 
 if __name__ == "__main__":
-    test_generate_audio()
+    prompt = load_bark_audio_prompt(prompt_path)
+    print(prompt)

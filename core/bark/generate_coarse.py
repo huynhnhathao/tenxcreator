@@ -185,7 +185,7 @@ def _process_history_prompt(
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Process the history prompt into semantic and coarse history tensors.
-
+    Trim on the left (keep the right most tokens)
     Args:
         history_prompt: BarkPrompt object or None.
         max_semantic_history: Maximum number of semantic history tokens.

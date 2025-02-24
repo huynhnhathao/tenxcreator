@@ -14,12 +14,14 @@ from core.bark.generate_audio import (
 from core.types.bark import BarkPrompt
 from core.utils import normalize_whitespace, save_audio_file, read_audio_file
 from core.bark import generate_semantic_tokens_from_text, encodec_encode_audio
+from core.gvar import env
 
 """
 Convenient functions to generate text to audio
 """
 
 _t2a_dispatcher = {TextToAudioModel.BARK: bark_generate_audio}
+_bark_prompt_path = os.path.join(env.CACHE_DIR, "bark", "prompts")
 
 
 def create_bark_prompt(audio_prompt: RawAudioPrompt) -> BarkPrompt:
@@ -44,7 +46,9 @@ def create_bark_prompt(audio_prompt: RawAudioPrompt) -> BarkPrompt:
 
     # generate codebook tokens using encodec
     # assuming 24khz sample rate, will get back later if needed for 48khz
-    codes = encodec_encode_audio(torch.from_numpy(raw_audio), audio_prompt.sample_rate)
+    codes = encodec_encode_audio(
+        torch.from_numpy(raw_audio[None]), audio_prompt.sample_rate
+    )
 
     return BarkPrompt(semantic_tokens, codes[:2, :], codes)
 
@@ -71,6 +75,11 @@ def text_to_audio(
     # and save it for later reference
     if isinstance(audio_prompt, RawAudioPrompt):
         prompt = create_bark_prompt(audio_prompt)
+        prompt.save_prompt(
+            os.path.join(
+                _bark_prompt_path, audio_prompt.get_default_prompt_name(), ".msgpack"
+            )
+        )
     elif isinstance(audio_prompt, str):
         prompt = load_bark_audio_prompt(audio_prompt)
 
